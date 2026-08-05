@@ -1,6 +1,7 @@
 {
   "_comment": "The exact REMORA core artifacts this product build consumes. AAE never installs from REMORA master and never imports internal REMORA modules; it pins this set and verifies every hash before use.",
   "built_from_clean_worktree": true,
+  "core_release_manifest_sha256": "e501605186070b65398c243f04cf1829cb97bb55a73996b21755943be84cb0dd",
   "execution_lifecycle_schema_sha256": "b39e41d89dd8cb1c1504c7c20254e654550700663053a19b3b81be440d807458",
   "forbidden_namespaces": [
     "remora.policy",

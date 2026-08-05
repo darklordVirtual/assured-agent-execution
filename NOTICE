@@ -1,0 +1,24 @@
+Assured Agent Execution (AAE)
+
+Copyright (C) 2026 Stian Skogbrott.
+All rights reserved except as expressly granted under the applicable
+Assured Agent Execution license.
+
+Assured Agent Execution versions beginning with 0.1.0 are made available
+under the Business Source License 1.1 (see LICENSE) or, by separate
+written agreement, under the AAE Commercial License. No commercial use
+is permitted without a commercial license from the Licensor,
+Stian Skogbrott. Contact: support@luftfiber.no
+
+This product consumes pinned REMORA core artifacts identified in
+product/core-artifact-lock.json. REMORA is a separate Licensed Work of
+the same Licensor, distributed under its own copy of the Business Source
+License 1.1. Rights in Assured Agent Execution grant no rights in
+REMORA, and rights in REMORA grant none in Assured Agent Execution.
+
+Third-party components reach this product through the pinned REMORA
+wheel and the container base images, and remain governed by their
+respective licenses and notices.
+
+"Assured Agent Execution", "AAE" and "REMORA" names and logos are not
+licensed for product branding except by separate written permission.
