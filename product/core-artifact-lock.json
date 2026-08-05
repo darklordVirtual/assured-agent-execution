@@ -1,25 +1,27 @@
 {
   "_comment": "The exact REMORA core artifacts this product build consumes. AAE never installs from REMORA master and never imports internal REMORA modules; it pins this set and verifies every hash before use.",
   "built_from_clean_worktree": true,
-  "execution_lifecycle_schema_sha256": "a62ec3ebb6e07998c84115d575455c6b2c966e5a9104797538c41e2e8311b999",
+  "execution_lifecycle_schema_sha256": "b39e41d89dd8cb1c1504c7c20254e654550700663053a19b3b81be440d807458",
   "forbidden_namespaces": [
     "remora.policy",
     "remora.enforcement",
     "remora.governance",
     "servers"
   ],
-  "openapi_sha256": "9ea2612c54a238367c0af44d88aa53cf6ff63e0f9b7f9696eb83a2f9ddc870c9",
+  "openapi_sha256": "c06dc53b89fd53efcd2262ab06f0adb7dbdb8aac71e625d0c8b050436a289d24",
+  "postcondition_contract_schema_sha256": "d0070e3f29ff533359e51f6f5cbf357812343ddc60629a3b172e747cbfd45565",
   "release_repo": "darklordVirtual/REMORA-research",
   "release_status": "prerelease",
-  "release_status_reason": "Gate B is not finished in REMORA core (FT-03 signed ToolSpec and FT-04 postcondition verification are open) and no external review has run against this build. Pinnable, not blessed.",
-  "release_tag": "core-candidate-2026.08.05",
-  "remora_core_commit": "f3e58dbb6f47c61767f42210d9d939df3ae9b645",
+  "release_status_reason": "FT-03 signed ToolSpec and FT-04 effect verification are now in the pinned core, so the §12 surface is complete. Still a prerelease: no external review has run against this build and Gate B is not closed. Pinnable, not blessed.",
+  "release_tag": "core-candidate-2026.08.05.2",
+  "remora_core_commit": "716f6bd477396f697fa4c4bf2584def710ee3318",
   "remora_core_version": "0.10.0",
-  "sdk_public_api_sha256": "2d26f773819664db2e2364116a9044096f1fa2919bcebf8e97d5e400139e7c79",
+  "sdk_public_api_sha256": "bcd004d05dcc2cb1175d4a67c4826be65085ca050aba3169aba97d5a5b6b7744",
   "stable_namespace": "remora.sdk",
-  "supported_sdk_symbols": 28,
+  "supported_sdk_symbols": 35,
+  "tool_spec_schema_sha256": "be5a437079e37868f1797a3fccfb2a4502321a04ba5dd316c6f0979154d6892e",
   "wheel": {
     "filename": "remora-0.10.0-py3-none-any.whl",
-    "sha256": "2d966454faa2ce39c5ae387763220577e87528caa803c18c91a10d428f745304"
+    "sha256": "71018cf8ec110db1bfefac66a33e6c92a41b55421dbf69ee7a970749140b3184"
   }
 }

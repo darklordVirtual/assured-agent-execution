@@ -21,24 +21,30 @@ AAE consumes versioned REMORA artifacts. It never installs from
 `remora.policy`, `remora.enforcement`, `remora.governance`, or `servers.*`.
 
 This repository pins a hash-identified REMORA artifact set —
-release [`core-candidate-2026.08.05`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.05),
-built from a clean checkout of commit `f3e58db`:
+release [`core-candidate-2026.08.05.2`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.05.2),
+built from a clean checkout of commit `716f6bd`:
 
 | Artifact | Pinned by |
 |---|---|
 | `remora-0.10.0-py3-none-any.whl` | SHA-256 |
 | `openapi.json` | SHA-256 |
-| `public_api_v1.json` (28 SDK symbols) | SHA-256 |
+| `public_api_v1.json` (35 SDK symbols) | SHA-256 |
 | `execution_lifecycle_v1.yaml` | SHA-256 |
+| `tool_spec_v1.yaml` | SHA-256 |
+| `postcondition_contract_v1.yaml` | SHA-256 |
+
+The two frozen contracts are pinned alongside the code on purpose:
+agreeing on the wheel while disagreeing about what a ToolSpec is, or what
+an effect status means, is exactly the drift a pin exists to prevent.
 
 `product/core-artifact-lock.json` holds the pin;
 `scripts/verify_core_pin.py` downloads the release and **refuses on any
 hash mismatch** — a pin nobody verifies is a comment, not a control.
 
 The release is marked **prerelease deliberately**: it is pinnable, not
-blessed. REMORA's Gate B is unfinished (see blockers below) and no
-external review has run against this build. The signed control-plane
-image, SBOM and provenance do not exist yet.
+blessed. No external review has run against this build, Gate B is not
+closed, and the signed control-plane image, SBOM and provenance do not
+exist yet.
 
 ## Bootstrap validation
 
@@ -69,12 +75,20 @@ Closed in REMORA core on 2026-08-05 and available in the pinned release:
   crash matrix executed as tests and reconciliation of stranded dispatches.
 - ~~evidence export~~ — `export_evidence` returns a hashed manifest.
 
+- ~~`verify_effect` / effect verification~~ — FT-04 landed. A postcondition
+  is declared, verified against **the declared delta only**, and the record
+  handed back with `record_effect`. Verification runs in this product's
+  process because the reader holds the credentials; REMORA stores the
+  result as an attestation by a named verifier, not as a proof of its own.
+- ~~signed ToolSpec (FT-03)~~ — runtime enforcement is in the pinned core,
+  and `ToolSpecIdentity` tells this product which spec authorized an action
+  and whether specs are enforced at all.
+
 Still open, and the reason this is not a release candidate:
 
-- **`EffectVerification` / `verify_effect`** — depend on FT-04 postcondition
-  verification, which does not exist in REMORA core. Asserted absent by a
-  compatibility test so the gap cannot drift into place unnoticed.
-- **Signed ToolSpec (FT-03)** runtime enforcement is not a consumable artifact.
+- Effect verification covers tools that **declare a postcondition reader**.
+  A tool without one reports `EFFECT_UNSUPPORTED`, recorded so the absence
+  is visible — that is not a verified effect.
 - **No AAE control plane, worker, ToolPack, console or migrations exist yet** —
   this repository is a verified pin plus its compatibility gate, nothing more.
 - OIDC, worker isolation, backup/restore and external review remain open.
