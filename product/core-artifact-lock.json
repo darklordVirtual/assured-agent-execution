@@ -12,9 +12,9 @@
   "postcondition_contract_schema_sha256": "d0070e3f29ff533359e51f6f5cbf357812343ddc60629a3b172e747cbfd45565",
   "release_repo": "darklordVirtual/REMORA-research",
   "release_status": "prerelease",
-  "release_status_reason": "FT-03 signed ToolSpec and FT-04 effect verification are now in the pinned core, so the §12 surface is complete. Still a prerelease: no external review has run against this build and Gate B is not closed. Pinnable, not blessed.",
-  "release_tag": "core-candidate-2026.08.05.2",
-  "remora_core_commit": "716f6bd477396f697fa4c4bf2584def710ee3318",
+  "release_status_reason": "Supersedes core-candidate-2026.08.05.2, which refused a changed ToolSpec only AFTER authorizing \u2014 leaving a dispatch intent behind for a call that was never allowed. Still a prerelease: no external review has run against this build and Gate B is not closed. Pinnable, not blessed.",
+  "release_tag": "core-candidate-2026.08.05.3",
+  "remora_core_commit": "9866436c55e18ef336ce2897b7bff94f434ac531",
   "remora_core_version": "0.10.0",
   "sdk_public_api_sha256": "bcd004d05dcc2cb1175d4a67c4826be65085ca050aba3169aba97d5a5b6b7744",
   "stable_namespace": "remora.sdk",
@@ -22,6 +22,6 @@
   "tool_spec_schema_sha256": "be5a437079e37868f1797a3fccfb2a4502321a04ba5dd316c6f0979154d6892e",
   "wheel": {
     "filename": "remora-0.10.0-py3-none-any.whl",
-    "sha256": "71018cf8ec110db1bfefac66a33e6c92a41b55421dbf69ee7a970749140b3184"
+    "sha256": "e44bc1ad51db8b79d0f3d3e14daa7fb95dd87edffa8300711b0df4991bc45b7e"
   }
 }
