@@ -1,0 +1,73 @@
+{
+  "artifacts": {
+    "execution_lifecycle_schema": {
+      "filename": "execution_lifecycle_v1.yaml",
+      "sha256": "a62ec3ebb6e07998c84115d575455c6b2c966e5a9104797538c41e2e8311b999"
+    },
+    "openapi": {
+      "filename": "openapi.json",
+      "sha256": "9ea2612c54a238367c0af44d88aa53cf6ff63e0f9b7f9696eb83a2f9ddc870c9"
+    },
+    "sdk_public_api": {
+      "filename": "public_api_v1.json",
+      "sha256": "2d26f773819664db2e2364116a9044096f1fa2919bcebf8e97d5e400139e7c79",
+      "symbol_count": 28
+    },
+    "wheel": {
+      "filename": "remora-0.10.0-py3-none-any.whl",
+      "sha256": "2d966454faa2ce39c5ae387763220577e87528caa803c18c91a10d428f745304",
+      "size_bytes": 1479534
+    }
+  },
+  "consumer_contract": {
+    "backward_compatibility": "pre-1.0: breaking changes allowed in minor versions, always CHANGELOG-recorded; the public surface is snapshot-gated",
+    "internal_namespaces": [
+      "remora.policy",
+      "remora.enforcement",
+      "remora.governance",
+      "servers"
+    ],
+    "stable_namespace": "remora.sdk"
+  },
+  "generated_at": "2026-08-05T18:38:24.914004+00:00",
+  "git_commit": "f3e58dbb6f47c61767f42210d9d939df3ae9b645",
+  "manifest_version": 1,
+  "remora_core_version": "0.10.0",
+  "sdk": {
+    "extras_required": [
+      "sdk"
+    ],
+    "module": "remora.sdk",
+    "symbols": {
+      "ApprovalExpiredError": "exception",
+      "ApprovalResult": "class",
+      "AssessmentResult": "class",
+      "AsyncRemoraClient": "class",
+      "AuditRef": "class",
+      "AuditVerification": "class",
+      "AuthenticationError": "exception",
+      "AuthorizationError": "exception",
+      "BindingRefusedError": "exception",
+      "ConflictError": "exception",
+      "DecisionAction": "class",
+      "DerivationProposal": "class",
+      "ExecutionResult": "class",
+      "InvalidRequestError": "exception",
+      "LifecycleTrail": "class",
+      "NotFoundError": "exception",
+      "ProposalView": "class",
+      "RateLimitedError": "exception",
+      "RejectionResult": "class",
+      "RemoraClient": "class",
+      "RemoraError": "exception",
+      "RemoraUnavailableError": "exception",
+      "ReplayRefusedError": "exception",
+      "ResolutionPlan": "class",
+      "SemanticAssessment": "class",
+      "ServerError": "exception",
+      "ToolCall": "class",
+      "UnknownExecutionStateError": "exception"
+    }
+  },
+  "worktree_clean": true
+}

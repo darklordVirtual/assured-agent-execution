@@ -20,47 +20,67 @@ AAE consumes versioned REMORA artifacts. It never installs from
 `REMORA-research/master` and never copies internal modules such as
 `remora.policy`, `remora.enforcement`, `remora.governance`, or `servers.*`.
 
-The bootstrap pins three public contract artifacts from REMORA commit
-`534ace63d11760056f10ec114920c2424a8ecf4d`:
+This repository pins a hash-identified REMORA artifact set —
+release [`core-candidate-2026.08.05`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.05),
+built from a clean checkout of commit `f3e58db`:
 
-- OpenAPI contract
-- declared execution lifecycle schema
-- public SDK API snapshot
+| Artifact | Pinned by |
+|---|---|
+| `remora-0.10.0-py3-none-any.whl` | SHA-256 |
+| `openapi.json` | SHA-256 |
+| `public_api_v1.json` (28 SDK symbols) | SHA-256 |
+| `execution_lifecycle_v1.yaml` | SHA-256 |
 
-The pin is evidence of compatibility work, not a REMORA product release.
-The required wheel, signed control-plane image, SBOM, provenance, and release
-manifest do not yet exist.
+`product/core-artifact-lock.json` holds the pin;
+`scripts/verify_core_pin.py` downloads the release and **refuses on any
+hash mismatch** — a pin nobody verifies is a comment, not a control.
+
+The release is marked **prerelease deliberately**: it is pinnable, not
+blessed. REMORA's Gate B is unfinished (see blockers below) and no
+external review has run against this build. The signed control-plane
+image, SBOM and provenance do not exist yet.
 
 ## Bootstrap validation
 
 ```bash
-python -m pip install -e ".[dev]"
-python -m aae diagnostics
-pytest
+python scripts/verify_core_pin.py --out dist   # verify the pinned artifacts
+python -m venv .venv && .venv/bin/pip install pytest "dist/remora-0.10.0-py3-none-any.whl[sdk]"
+.venv/bin/python -m pytest tests/compatibility -q
 ```
 
-Docker validates the bootstrap profile and starts PostgreSQL:
+That is the whole bootstrap today: fetch the pinned core, verify its
+hashes, install the SDK from it, and prove the surface this product
+depends on is really there. There is no `aae` package to run yet.
 
-```bash
-cp .env.example .env
-docker compose -f deploy/docker-compose.yml up --build
-```
-
-This is not the final five-minute product quickstart. It intentionally
-refuses release-readiness while core blockers remain.
+There is no Docker profile yet: a compose file that started nothing
+governable would be a demo of a product that does not exist. It arrives
+with the control plane in Gate C.
 
 ## Current release blockers
 
-- REMORA has no product release manifest for AAE to pin.
-- `execute_accepted(execution_token, tool_call)` is not in the public SDK.
-- `ResolutionPlan` and `EffectVerification` are not in the public SDK snapshot.
-- Lifecycle outbox states are declared ahead of runtime wiring.
-- EFFECT verification states are absent until the postcondition contract lands.
-- Signed ToolSpec runtime enforcement is not yet a consumable release artifact.
-- OIDC, worker isolation, recovery, evidence export, and external review remain open.
+Closed in REMORA core on 2026-08-05 and available in the pinned release:
 
-See [implementation status](docs/implementation-status.md) and
-[known limitations](docs/known-limitations.md).
+- ~~no product release manifest to pin~~ — published and hash-verified.
+- ~~`execute_accepted` missing from the SDK~~ — present on both clients;
+  the ACCEPT token now has a governed redemption path.
+- ~~`ResolutionPlan` missing~~ — present, and ESCALATE now carries a
+  strictly higher `required_role` than VERIFY.
+- ~~lifecycle outbox states declared ahead of wiring~~ — wired, with the
+  crash matrix executed as tests and reconciliation of stranded dispatches.
+- ~~evidence export~~ — `export_evidence` returns a hashed manifest.
+
+Still open, and the reason this is not a release candidate:
+
+- **`EffectVerification` / `verify_effect`** — depend on FT-04 postcondition
+  verification, which does not exist in REMORA core. Asserted absent by a
+  compatibility test so the gap cannot drift into place unnoticed.
+- **Signed ToolSpec (FT-03)** runtime enforcement is not a consumable artifact.
+- **No AAE control plane, worker, ToolPack, console or migrations exist yet** —
+  this repository is a verified pin plus its compatibility gate, nothing more.
+- OIDC, worker isolation, backup/restore and external review remain open.
+
+Those documents arrive with Gate C; until then this README is the
+status, so there is nothing to drift out of sync with.
 
 ## Non-claims
 

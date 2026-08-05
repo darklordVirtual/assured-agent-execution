@@ -1,0 +1,48 @@
+name: PR — pinned-core compatibility
+
+# The product's dependency direction only holds if the pin is verified on
+# every change. This job fetches the pinned REMORA release, refuses on any
+# hash mismatch, installs the SDK from that exact wheel, and proves the
+# surface this product depends on is present — plus that no product source
+# imports a REMORA internal namespace.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-core-contract:
+    name: Pinned core artifacts and SDK contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify the pinned core artifacts
+        # Exit 1 = the artifacts are not what we pinned (fail loudly).
+        # Exit 2 = we could not reach the release (also a failure, but a
+        # different one; the script keeps them distinct on purpose).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/verify_core_pin.py --out dist
+
+      - name: Install the SDK from the pinned wheel
+        # From the wheel we just hash-verified — never from source, never
+        # from REMORA master.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "$(ls dist/remora-*.whl)[sdk]"
+
+      - name: SDK contract and import-boundary tests
+        run: python -m pytest tests/compatibility -q

@@ -1,0 +1,25 @@
+{
+  "_comment": "The exact REMORA core artifacts this product build consumes. AAE never installs from REMORA master and never imports internal REMORA modules; it pins this set and verifies every hash before use.",
+  "built_from_clean_worktree": true,
+  "execution_lifecycle_schema_sha256": "a62ec3ebb6e07998c84115d575455c6b2c966e5a9104797538c41e2e8311b999",
+  "forbidden_namespaces": [
+    "remora.policy",
+    "remora.enforcement",
+    "remora.governance",
+    "servers"
+  ],
+  "openapi_sha256": "9ea2612c54a238367c0af44d88aa53cf6ff63e0f9b7f9696eb83a2f9ddc870c9",
+  "release_repo": "darklordVirtual/REMORA-research",
+  "release_status": "prerelease",
+  "release_status_reason": "Gate B is not finished in REMORA core (FT-03 signed ToolSpec and FT-04 postcondition verification are open) and no external review has run against this build. Pinnable, not blessed.",
+  "release_tag": "core-candidate-2026.08.05",
+  "remora_core_commit": "f3e58dbb6f47c61767f42210d9d939df3ae9b645",
+  "remora_core_version": "0.10.0",
+  "sdk_public_api_sha256": "2d26f773819664db2e2364116a9044096f1fa2919bcebf8e97d5e400139e7c79",
+  "stable_namespace": "remora.sdk",
+  "supported_sdk_symbols": 28,
+  "wheel": {
+    "filename": "remora-0.10.0-py3-none-any.whl",
+    "sha256": "2d966454faa2ce39c5ae387763220577e87528caa803c18c91a10d428f745304"
+  }
+}
