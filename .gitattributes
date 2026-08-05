@@ -1,0 +1,34 @@
+# LF everywhere, checked out and committed.
+#
+# This is not tidiness. Two things in this repository break on CRLF, and both
+# break in ways that mislead:
+#
+#   docker/entrypoint.sh   A shell script with CRLF line endings fails in the
+#                          container as "no such file or directory" — naming
+#                          the interpreter, not the script — because the \r
+#                          becomes part of the shebang path. An operator on
+#                          Windows would clone, build, and get an error that
+#                          points nowhere near the cause.
+#
+#   product/*.json         scripts/verify_core_pin.py LF-normalizes text
+#                          artifacts before hashing so a Windows checkout and
+#                          a Linux one agree. Committing CRLF works, but it
+#                          means the bytes on disk are never the bytes that
+#                          were hashed, and every future person reasoning
+#                          about the pin has to know that.
+
+* text=auto eol=lf
+
+*.sh      text eol=lf
+*.sql     text eol=lf
+*.json    text eol=lf
+*.py      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+Dockerfile     text eol=lf
+*.Dockerfile   text eol=lf
+
+*.whl binary
+*.png binary
+*.zip binary
