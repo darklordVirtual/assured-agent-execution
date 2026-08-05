@@ -54,7 +54,21 @@ from remora.toolcall.semantic_bundle import ResolvedIntent, SemanticBundle
 #: depend on a database round-trip whose failure mode is "everything looks
 #: ungrounded", and would let the set drift between the assess and the
 #: execute of a single proposal.
+#: Work orders that exist in the system of record today.
 KNOWN_WORK_ORDERS = frozenset({"WO-1201", "WO-1202", "WO-1203", "WO-1150"})
+
+#: Work orders a signed authority AUTHORIZES but that do not exist yet.
+#:
+#: A create is the one operation whose target must NOT pre-exist, so under
+#: closed-world grounding it would otherwise be permanently ungrounded — the
+#: deployment would be unable to create anything through a governed path,
+#: which is not caution, it is a modelling mistake.
+#:
+#: These are still declared identifiers: WO-1310 is named in a signed work
+#: order this deployment issued. An id in neither set remains confirmed
+#: absent, so "create anything you like" is not what this buys.
+AUTHORIZED_FUTURE_WORK_ORDERS = frozenset({"WO-1310"})
+
 KNOWN_ASSETS = frozenset({"PIC-101", "LT-410", "P-7", "VT-330"})
 
 
@@ -109,7 +123,7 @@ def build_semantic_bundle() -> SemanticBundle:
     # routed as ungrounded instead of being given the benefit of the doubt —
     # and it is only honest because this deployment owns the whole namespace.
     state = StateIndex.from_values(
-        set(KNOWN_WORK_ORDERS | KNOWN_ASSETS),
+        set(KNOWN_WORK_ORDERS | AUTHORIZED_FUTURE_WORK_ORDERS | KNOWN_ASSETS),
         (CoverageScope("maintenance",
                        frozenset({"wo_id", "asset_id"}),
                        closed_world=True),),

@@ -1,7 +1,7 @@
 {
   "_comment": "The exact REMORA core artifacts this product build consumes. AAE never installs from REMORA master and never imports internal REMORA modules; it pins this set and verifies every hash before use.",
   "built_from_clean_worktree": true,
-  "core_release_manifest_sha256": "99ddaa4bf05a15059413cce07c8e7db8e45af709e2d7345f94b65fd38c67bcb7",
+  "core_release_manifest_sha256": "837835522038e3779fde1849c5ce73d05f5a50287c93740842dfc0a4f42b9ef1",
   "execution_lifecycle_schema_sha256": "b39e41d89dd8cb1c1504c7c20254e654550700663053a19b3b81be440d807458",
   "forbidden_namespaces": [
     "remora.policy",
@@ -13,9 +13,9 @@
   "postcondition_contract_schema_sha256": "d0070e3f29ff533359e51f6f5cbf357812343ddc60629a3b172e747cbfd45565",
   "release_repo": "darklordVirtual/REMORA-research",
   "release_status": "prerelease",
-  "release_status_reason": "Adds deployment-declared tool classification, the deterministic GROUNDED_READ_ACCEPT path, and per-surface production prerequisites — the three things that were keeping this product to three of its four decisions. Every frozen contract artifact is byte-identical to the previous candidate; only the wheel moved. Still a prerelease: no external review has run against this build, Gate B is not closed, and there is no signed image, SBOM or build provenance. Pinnable, not blessed.",
-  "release_tag": "core-candidate-2026.08.06.2",
-  "remora_core_commit": "4d7b62aed727fb372018e6d3b56112899a51331c",
+  "release_status_reason": "Supersedes .2, which could not start from a wheel in production mode: the risk profile resolved against the working directory rather than the installed package root. Carries deployment-declared tool classification, the deterministic GROUNDED_READ_ACCEPT path, and per-surface production prerequisites. Every frozen contract artifact is byte-identical to .1 and .2; only the wheel moved. Still a prerelease: no external review has run against this build, Gate B is not closed, and there is no signed image, SBOM or build provenance. Pinnable, not blessed.",
+  "release_tag": "core-candidate-2026.08.06.3",
+  "remora_core_commit": "aff4edf7ec61a29c6db4c56204284938a788780f",
   "remora_core_version": "0.10.0",
   "sdk_public_api_sha256": "04c48a2799de65841277e80ce964a40abd7ad708d1f4bd673ca9e63f65c70e11",
   "stable_namespace": "remora.sdk",
@@ -23,6 +23,6 @@
   "tool_spec_schema_sha256": "be5a437079e37868f1797a3fccfb2a4502321a04ba5dd316c6f0979154d6892e",
   "wheel": {
     "filename": "remora-0.10.0-py3-none-any.whl",
-    "sha256": "17717bb336f75de592102cbb3c24d4d809b70374073184efc75875573a900c53"
+    "sha256": "4e8dac2af3fd46f79f1e813e5e431bfd236234ba122d05f4024e85242d4f1e89"
   }
 }

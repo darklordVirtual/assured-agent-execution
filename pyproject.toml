@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aae"
+version = "0.1.0"
+description = "Assured Agent Execution — deterministic governance and controlled execution for probabilistic AI agents"
+readme = "README.md"
+license = "BUSL-1.1"
+license-files = ["LICENSE", "LICENSING.md", "COMMERCIAL_LICENSE.md", "NOTICE"]
+authors = [{ name = "Stian Skogbrott", email = "support@luftfiber.no" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
+
+# remora is NOT declared here, deliberately.
+#
+# It is not installed from an index; it is installed from the exact wheel
+# named and hash-verified in product/core-artifact-lock.json. A dependency
+# line saying `remora>=0.10` would let pip resolve a different build than the
+# one this product pinned — which is precisely the drift the lock exists to
+# prevent. See README "Install".
+dependencies = [
+    "httpx>=0.25",          # the SDK's transport
+    "psycopg[binary]>=3.1",  # the work-order system of record
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aae = "aae.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aae", "toolpacks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

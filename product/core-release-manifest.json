@@ -23,8 +23,8 @@
     },
     "wheel": {
       "filename": "remora-0.10.0-py3-none-any.whl",
-      "sha256": "17717bb336f75de592102cbb3c24d4d809b70374073184efc75875573a900c53",
-      "size_bytes": 1523263
+      "sha256": "4e8dac2af3fd46f79f1e813e5e431bfd236234ba122d05f4024e85242d4f1e89",
+      "size_bytes": 1523751
     }
   },
   "consumer_contract": {
@@ -37,8 +37,8 @@
     ],
     "stable_namespace": "remora.sdk"
   },
-  "generated_at": "2026-08-05T23:18:56.202261+00:00",
-  "git_commit": "4d7b62aed727fb372018e6d3b56112899a51331c",
+  "generated_at": "2026-08-05T23:43:35.364491+00:00",
+  "git_commit": "aff4edf7ec61a29c6db4c56204284938a788780f",
   "manifest_version": 1,
   "remora_core_version": "0.10.0",
   "sdk": {

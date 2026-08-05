@@ -1,0 +1,343 @@
+# Author: Stian Skogbrott
+# SPDX-License-Identifier: BUSL-1.1
+"""The product CLI.
+
+    aae doctor                       what is running, and what is configured
+    aae scenarios                    run the four decisions end to end
+    aae propose <tool> k=v ...       submit one governed call
+    aae approve <review-item-id>     release a held decision (approver token)
+    aae execute <proposal-id> k=v    execute an approved proposal
+    aae lifecycle <proposal-id>      the ordered event trail
+    aae verify-effect <proposal-id> <tool> k=v ...
+    aae evidence export --out DIR [proposal-id ...]
+
+Each command uses the narrowest token that can perform it. ``approve`` uses
+the approver; everything else uses the agent. A CLI holding one omnipotent
+token would be simpler and would stop demonstrating role separation, which is
+one of the things this product is for.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+from aae.config import Config, ConfigError
+
+EXIT_OK = 0
+EXIT_FAILED = 1        # the system answered, and the answer is a failure
+EXIT_UNAVAILABLE = 2   # we could not reach it — kept distinct on purpose
+EXIT_CONFIG = 78
+
+
+def _kv(pairs: list[str]) -> dict[str, Any]:
+    """Parse ``k=v`` arguments. Values are strings unless valid JSON."""
+    out: dict[str, Any] = {}
+    for pair in pairs:
+        if "=" not in pair:
+            raise SystemExit(f"argument must be key=value, got {pair!r}")
+        key, _, raw = pair.partition("=")
+        try:
+            out[key] = json.loads(raw)
+        except ValueError:
+            out[key] = raw
+    return out
+
+
+def _client(cfg: Config, role: str = "agent"):
+    from remora.sdk import RemoraClient
+
+    if role in ("agent", "viewer"):
+        token = {"agent": cfg.token_agent, "viewer": cfg.token_viewer}[role]
+    else:
+        # An approver identity is chosen by the role a DECISION requires,
+        # never by a caller's preference — see Config.approver_for.
+        _, token = cfg.approver_for(role)
+    return RemoraClient(cfg.api_url, token)
+
+
+# ── doctor ─────────────────────────────────────────────────────────────────
+
+def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
+    import psycopg
+    from remora.sdk import RemoraUnavailableError
+
+    lock = json.loads((Path(__file__).resolve().parents[2] /
+                       "product" / "core-artifact-lock.json"
+                       ).read_text(encoding="utf-8"))
+    print("Assured Agent Execution")
+    print(f"  pinned core   REMORA {lock['remora_core_version']} @ "
+          f"{lock['remora_core_commit'][:8]} ({lock['release_tag']}, "
+          f"{lock['release_status']})")
+    print(f"  api           {cfg.api_url}")
+
+    ok = True
+    try:
+        with _client(cfg, "viewer") as client:
+            root = client._request("GET", "/")  # noqa: SLF001 — diagnostics
+        print(f"  control plane {root.get('status')}, "
+              f"mode={root.get('runtime_mode')}, "
+              f"surfaces={','.join(root.get('surfaces', []))}")
+    except RemoraUnavailableError as exc:
+        print(f"  control plane UNREACHABLE — {exc}")
+        ok = False
+    except Exception as exc:  # noqa: BLE001
+        print(f"  control plane error — {type(exc).__name__}: {exc}")
+        ok = False
+
+    # The reader credential, checked as a reader: it must connect AND must
+    # not be able to write. A doctor that only proved connectivity would miss
+    # the property that matters.
+    try:
+        with psycopg.connect(cfg.reader_dsn, connect_timeout=5) as conn:
+            conn.read_only = True
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM work_orders")
+                count = cur.fetchone()[0]
+        print(f"  system of record  reachable, {count} work order(s), "
+              f"read-only credential")
+    except psycopg.Error as exc:
+        print(f"  system of record  UNREACHABLE — {exc}".strip())
+        ok = False
+
+    if not ok:
+        print("\n  not healthy. try: make up")
+    return EXIT_OK if ok else EXIT_UNAVAILABLE
+
+
+# ── scenarios ──────────────────────────────────────────────────────────────
+
+def cmd_scenarios(cfg: Config, args: argparse.Namespace) -> int:
+    from aae import scenarios
+
+    outcomes = scenarios.run_all(cfg)
+    print()
+    for outcome in outcomes:
+        mark = "PASS" if outcome.passed else "FAIL"
+        print(f"  [{mark}] {outcome.name}")
+        for step in outcome.steps:
+            print(f"         {step}")
+        print(f"         → {outcome.detail}")
+        print()
+
+    failed = [o for o in outcomes if not o.passed]
+    print(f"  {len(outcomes) - len(failed)}/{len(outcomes)} scenarios behaved "
+          f"as documented")
+    if failed:
+        print("\n  FAILURES:")
+        for outcome in failed:
+            print(f"    - {outcome.name}: {outcome.detail}")
+        return EXIT_FAILED
+    if args.evidence_out:
+        from aae import evidence
+
+        ids = [o.proposal_id for o in outcomes if o.proposal_id]
+        with _client(cfg) as client:
+            manifest = evidence.export(client, ids, Path(args.evidence_out))
+        print(f"\n  evidence for {len(manifest['proposals_exported'])} "
+              f"proposal(s) → {args.evidence_out}")
+    return EXIT_OK
+
+
+# ── single operations ──────────────────────────────────────────────────────
+
+def cmd_propose(cfg: Config, args: argparse.Namespace) -> int:
+    from remora.sdk import ToolCall
+
+    with _client(cfg) as client:
+        result = client.assess(ToolCall(
+            tool_name=args.tool, arguments=_kv(args.args),
+            target_environment=args.env, intent_ref=args.intent))
+    print(json.dumps({
+        "proposal_id": result.proposal_id,
+        "decision": result.action.value,
+        "reasons": list(result.reasons),
+        "review_item_id": result.review_item_id,
+        "has_execution_token": bool(result.execution_token),
+        "required_role": (result.resolution_plan.required_role
+                          if result.resolution_plan else None),
+    }, indent=2))
+    return EXIT_OK
+
+
+def cmd_approve(cfg: Config, args: argparse.Namespace) -> int:
+    """Release a held decision using the authority that decision requires.
+
+    --as is for the case where the required role is not derivable from the
+    review item alone. It cannot be used to approve with a WEAKER identity
+    than the decision asked for — Config.approver_for refuses a role it has
+    no token for, and the server refuses a token whose role is insufficient.
+    """
+    role, token = cfg.approver_for(args.as_role)
+    from remora.sdk import RemoraClient
+
+    with RemoraClient(cfg.api_url, token) as client:
+        approval = client.approve(args.review_item_id, ttl_seconds=args.ttl)
+    print(json.dumps({"status": approval.status,
+                      "approved_as": role,
+                      "proposal_id": approval.proposal_id,
+                      "expires_at": approval.expires_at}, indent=2))
+    return EXIT_OK
+
+
+def cmd_execute(cfg: Config, args: argparse.Namespace) -> int:
+    with _client(cfg) as client:
+        result = (client.execute_accepted(args.proposal_id) if args.accepted
+                  else client.execute(args.proposal_id, _kv(args.args)))
+    print(json.dumps({"proposal_id": result.proposal_id,
+                      "outcome": result.outcome,
+                      "detail": result.detail}, indent=2))
+    return EXIT_OK
+
+
+def cmd_lifecycle(cfg: Config, args: argparse.Namespace) -> int:
+    with _client(cfg, "viewer") as client:
+        trail = client.get_lifecycle(args.proposal_id)
+    print(f"proposal {trail.proposal_id} — state {trail.current_state}")
+    for event in trail.events:
+        print(f"  {event}")
+    return EXIT_OK
+
+
+def cmd_verify_effect(cfg: Config, args: argparse.Namespace) -> int:
+    from aae import postcondition
+
+    arguments = _kv(args.args)
+    if not postcondition.supports(args.tool):
+        print(postcondition.describe(None))
+        return EXIT_OK
+
+    with _client(cfg) as client:
+        view = postcondition.verify(
+            dsn=cfg.reader_dsn, tool_name=args.tool, arguments=arguments,
+            proposal_id=args.proposal_id, execution_id=args.execution_id or
+            args.proposal_id, toolspec_hash=args.toolspec_hash or "0" * 64)
+        print(postcondition.describe(view))
+        if view is not None and not args.no_record:
+            recorded = client.record_effect(args.proposal_id, view)
+            print(f"recorded in the chain as {recorded.status.value}")
+    # Only a MISMATCH is a failure exit: the unknowns are not evidence that
+    # anything went wrong, and a CI job must not treat them as one.
+    if view is not None and view.status.is_terminal:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def cmd_evidence(cfg: Config, args: argparse.Namespace) -> int:
+    from aae import evidence
+
+    with _client(cfg) as client:
+        manifest = evidence.export(client, args.proposal_ids, Path(args.out))
+    print(json.dumps(manifest, indent=2))
+    if manifest["proposals_failed"]:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+# ── wiring ─────────────────────────────────────────────────────────────────
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="aae", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    doctor = sub.add_parser("doctor", help="what is running and configured")
+    doctor.set_defaults(func=cmd_doctor)
+
+    scen = sub.add_parser("scenarios", help="run the four decisions end to end")
+    scen.add_argument("--evidence-out", help="also export evidence to this directory")
+    scen.set_defaults(func=cmd_scenarios)
+
+    propose = sub.add_parser("propose", help="submit one governed tool call")
+    propose.add_argument("tool")
+    propose.add_argument("args", nargs="*", metavar="key=value")
+    propose.add_argument("--intent", help="work-order id this call acts under")
+    propose.add_argument("--env", default="prod")
+    propose.set_defaults(func=cmd_propose)
+
+    approve = sub.add_parser("approve", help="release a held decision")
+    approve.add_argument("review_item_id")
+    approve.add_argument("--ttl", type=int, default=900)
+    approve.add_argument("--as", dest="as_role", default=None,
+                         metavar="ROLE",
+                         help="approver role to use (reviewer, domain_expert, "
+                              "senior_authority); defaults to reviewer")
+    approve.set_defaults(func=cmd_approve)
+
+    execute = sub.add_parser("execute", help="execute an approved proposal")
+    execute.add_argument("proposal_id")
+    execute.add_argument("args", nargs="*", metavar="key=value")
+    execute.add_argument("--accepted", action="store_true",
+                         help="redeem an ACCEPT token instead of an approval")
+    execute.set_defaults(func=cmd_execute)
+
+    lifecycle = sub.add_parser("lifecycle", help="the ordered event trail")
+    lifecycle.add_argument("proposal_id")
+    lifecycle.set_defaults(func=cmd_lifecycle)
+
+    effect = sub.add_parser("verify-effect",
+                            help="read the system of record and compare")
+    effect.add_argument("proposal_id")
+    effect.add_argument("tool")
+    effect.add_argument("args", nargs="*", metavar="key=value")
+    effect.add_argument("--execution-id")
+    effect.add_argument("--toolspec-hash")
+    effect.add_argument("--no-record", action="store_true")
+    effect.set_defaults(func=cmd_verify_effect)
+
+    ev = sub.add_parser("evidence", help="export evidence")
+    ev_sub = ev.add_subparsers(dest="evidence_command", required=True)
+    ev_export = ev_sub.add_parser("export")
+    ev_export.add_argument("proposal_ids", nargs="*")
+    ev_export.add_argument("--out", required=True)
+    ev_export.set_defaults(func=cmd_evidence)
+
+    return parser
+
+
+def _force_utf8_output() -> None:
+    """Print UTF-8 regardless of the console's default codepage.
+
+    A Windows console defaults to cp1252, which cannot encode the arrows and
+    box characters in the scenario report. Without this, `aae scenarios`
+    crashes with UnicodeEncodeError *after* running the scenarios — so the
+    work happened, the governance decisions were recorded, and the operator
+    sees a stack trace instead of the result.
+
+    ``errors="replace"`` rather than a strict encoder: a character we cannot
+    render must degrade to a placeholder, never take down a command whose real
+    output is the decisions it just reported.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass  # a redirected or already-wrapped stream; not fatal
+
+
+def main(argv: list[str] | None = None) -> int:
+    _force_utf8_output()
+    args = build_parser().parse_args(argv)
+    try:
+        cfg = Config.from_env()
+    except ConfigError as exc:
+        print(f"aae: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    try:
+        return args.func(cfg, args)
+    except Exception as exc:  # noqa: BLE001
+        from remora.sdk import RemoraUnavailableError
+
+        if isinstance(exc, RemoraUnavailableError):
+            print(f"aae: control plane unreachable — {exc}", file=sys.stderr)
+            return EXIT_UNAVAILABLE
+        print(f"aae: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
