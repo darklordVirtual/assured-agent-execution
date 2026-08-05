@@ -56,6 +56,8 @@ def test_pinned_symbol_count_matches_the_installed_surface() -> None:
     "ToolSpecIdentity",
     "PostconditionSpec", "EffectStatus", "EffectVerificationView",
     "build_postcondition", "verify_effect", "content_digest",
+    # Proposal lineage, present since core-candidate-2026.08.06.1.
+    "ProposalLineageView",
 ])
 def test_required_symbol_is_importable(symbol: str) -> None:
     assert hasattr(sdk, symbol), f"required SDK symbol missing: {symbol}"
@@ -73,6 +75,34 @@ def test_required_operation_exists_on_both_clients(operation: str) -> None:
     assert hasattr(sdk.AsyncRemoraClient, operation), (
         f"async client lacks {operation}"
     )
+
+
+def test_lineage_eligibility_is_advisory_until_core_says_otherwise() -> None:
+    """This product must not treat eligibility as an escalation.
+
+    REMORA records the probing signal without routing on it, because the
+    grouping key is only as precise as the deployment's declarations allow
+    and the false-positive rate has not been measured. If a future core
+    dropped ``shadow_only``, acting on the flag would start escalating
+    legitimate repeated use — so the default is asserted here.
+    """
+    view = sdk.ProposalLineageView.from_payload(
+        {"superseded_proposal_id": "p-1", "escalation_eligible": True})
+    assert view is not None
+    assert view.shadow_only is True, (
+        "core stopped marking lineage escalation as shadow-only; this "
+        "product must not act on it until that change is deliberate"
+    )
+
+
+def test_an_unreported_lineage_is_not_reported_as_clean() -> None:
+    """None means "not reported", never "no probing"."""
+    result = sdk.AssessmentResult.from_payload({
+        "proposal_id": "p-1", "decision": "abstain", "reasons": [],
+        "tool_call_hash": "h", "semantic": {},
+        "audit": {"sequence_no": 1, "entry_hash": "e" * 64},
+    })
+    assert result.lineage is None
 
 
 def test_effect_statuses_keep_unknown_apart_from_wrong() -> None:
