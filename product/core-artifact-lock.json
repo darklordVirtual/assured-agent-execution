@@ -12,16 +12,16 @@
   "postcondition_contract_schema_sha256": "d0070e3f29ff533359e51f6f5cbf357812343ddc60629a3b172e747cbfd45565",
   "release_repo": "darklordVirtual/REMORA-research",
   "release_status": "prerelease",
-  "release_status_reason": "Supersedes core-candidate-2026.08.05.2, which refused a changed ToolSpec only AFTER authorizing \u2014 leaving a dispatch intent behind for a call that was never allowed. Still a prerelease: no external review has run against this build and Gate B is not closed. Pinnable, not blessed.",
-  "release_tag": "core-candidate-2026.08.05.3",
-  "remora_core_commit": "9866436c55e18ef336ce2897b7bff94f434ac531",
+  "release_status_reason": "Adds proposal lineage so resubmit-until-accept probing is visible. Still a prerelease: no external review has run against this build, Gate B is not closed, and lineage escalation is shadow-only because its false-positive rate has not been measured. Pinnable, not blessed.",
+  "release_tag": "core-candidate-2026.08.06.1",
+  "remora_core_commit": "4c859379533dc4d06f76f646402b083f74a8043f",
   "remora_core_version": "0.10.0",
-  "sdk_public_api_sha256": "bcd004d05dcc2cb1175d4a67c4826be65085ca050aba3169aba97d5a5b6b7744",
+  "sdk_public_api_sha256": "04c48a2799de65841277e80ce964a40abd7ad708d1f4bd673ca9e63f65c70e11",
   "stable_namespace": "remora.sdk",
-  "supported_sdk_symbols": 35,
+  "supported_sdk_symbols": 36,
   "tool_spec_schema_sha256": "be5a437079e37868f1797a3fccfb2a4502321a04ba5dd316c6f0979154d6892e",
   "wheel": {
     "filename": "remora-0.10.0-py3-none-any.whl",
-    "sha256": "e44bc1ad51db8b79d0f3d3e14daa7fb95dd87edffa8300711b0df4991bc45b7e"
+    "sha256": "d20b1ddde7306da42a91c40bc98f31e803cf13aa5c27f4e0a8cdcfdad661a95a"
   }
 }

@@ -21,14 +21,14 @@ AAE consumes versioned REMORA artifacts. It never installs from
 `remora.policy`, `remora.enforcement`, `remora.governance`, or `servers.*`.
 
 This repository pins a hash-identified REMORA artifact set —
-release [`core-candidate-2026.08.05.3`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.05.3),
-built from a clean checkout of commit `9866436`:
+release [`core-candidate-2026.08.06.1`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.06.1),
+built from a clean checkout of commit `4c85937`:
 
 | Artifact | Pinned by |
 |---|---|
 | `remora-0.10.0-py3-none-any.whl` | SHA-256 |
 | `openapi.json` | SHA-256 |
-| `public_api_v1.json` (35 SDK symbols) | SHA-256 |
+| `public_api_v1.json` (36 SDK symbols) | SHA-256 |
 | `execution_lifecycle_v1.yaml` | SHA-256 |
 | `tool_spec_v1.yaml` | SHA-256 |
 | `postcondition_contract_v1.yaml` | SHA-256 |
