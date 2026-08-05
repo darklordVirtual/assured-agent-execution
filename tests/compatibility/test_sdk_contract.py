@@ -52,6 +52,10 @@ def test_pinned_symbol_count_matches_the_installed_surface() -> None:
     "InvalidRequestError", "ConflictError", "ApprovalExpiredError",
     "BindingRefusedError", "ReplayRefusedError",
     "UnknownExecutionStateError",
+    # FT-03/FT-04, present since core-candidate-2026.08.05.2.
+    "ToolSpecIdentity",
+    "PostconditionSpec", "EffectStatus", "EffectVerificationView",
+    "build_postcondition", "verify_effect", "content_digest",
 ])
 def test_required_symbol_is_importable(symbol: str) -> None:
     assert hasattr(sdk, symbol), f"required SDK symbol missing: {symbol}"
@@ -60,6 +64,7 @@ def test_required_symbol_is_importable(symbol: str) -> None:
 @pytest.mark.parametrize("operation", [
     "assess", "approve", "reject", "execute", "execute_accepted",
     "get_proposal", "get_lifecycle", "export_evidence", "verify_audit_chain",
+    "record_effect",
 ])
 def test_required_operation_exists_on_both_clients(operation: str) -> None:
     """Sync and async must not drift: an operation missing from one of them
@@ -70,19 +75,52 @@ def test_required_operation_exists_on_both_clients(operation: str) -> None:
     )
 
 
-def test_effect_verification_is_honestly_absent() -> None:
-    """AAE §12 also names verify_effect/EffectVerification. They depend on
-    FT-04 postcondition verification, which is NOT in the pinned release.
+def test_effect_statuses_keep_unknown_apart_from_wrong() -> None:
+    """The distinction this product's incident handling depends on.
 
-    Asserting the absence keeps the gap visible: when FT-04 lands and a
-    newer core is pinned, this test fails and forces the surface list
-    above to be updated deliberately rather than drifting into place.
+    ``EFFECT_UNOBSERVABLE`` and ``EFFECT_VERIFIER_FAILED`` mean *we could
+    not look*; only ``EFFECT_MISMATCH`` means *we looked and it was
+    wrong*. If a future core made the unknowns terminal, this product
+    would start closing incidents that are still open — so the property
+    is asserted here rather than trusted.
     """
-    assert not hasattr(sdk, "EffectVerification"), (
-        "EffectVerification is now available — update the required-symbol "
-        "list and the known-limitations doc"
+    assert {s.value for s in sdk.EffectStatus} == {
+        "EFFECT_VERIFIED", "EFFECT_MISMATCH", "EFFECT_UNOBSERVABLE",
+        "EFFECT_VERIFIER_FAILED", "EFFECT_UNSUPPORTED",
+    }
+    assert sdk.EffectStatus.UNOBSERVABLE.is_terminal is False
+    assert sdk.EffectStatus.VERIFIER_FAILED.is_terminal is False
+    assert sdk.EffectStatus.MISMATCH.is_terminal is True
+
+
+def test_verification_compares_only_the_declared_delta() -> None:
+    """A system of record has other legitimate writers. If core ever began
+    reporting undeclared fields, every concurrent update would surface
+    here as a mismatch and the signal would become noise."""
+    spec = sdk.build_postcondition(
+        tool_id="create_ticket", target_selector={"system": "ops"},
+        expected_fields={"title": "approved title"},
     )
-    assert not hasattr(sdk.RemoraClient, "verify_effect")
+    result = sdk.verify_effect(
+        spec, {"title": "approved title", "updated_by_someone_else": True},
+        proposal_id="p-1", execution_id="e-1", toolspec_hash="0" * 64,
+        verifier_identity="aae.contract_test/v1",
+    )
+    assert result.status is sdk.EffectStatus.VERIFIED
+
+
+def test_an_unreadable_object_is_never_reported_as_a_mismatch() -> None:
+    """Failing to READ a result is not evidence the wrong thing happened,
+    and this product must never compensate on that basis."""
+    spec = sdk.build_postcondition(
+        tool_id="create_ticket", target_selector={}, expected_fields={"a": 1},
+    )
+    result = sdk.verify_effect(
+        spec, None, proposal_id="p-1", execution_id="e-1",
+        toolspec_hash="0" * 64, verifier_identity="aae.contract_test/v1",
+    )
+    assert result.status is sdk.EffectStatus.UNOBSERVABLE
+    assert result.status.is_terminal is False
 
 
 _INTERNAL = re.compile(

@@ -33,6 +33,11 @@ _TEXT_ASSETS = {
     "openapi.json": "openapi_sha256",
     "public_api_v1.json": "sdk_public_api_sha256",
     "execution_lifecycle_v1.yaml": "execution_lifecycle_schema_sha256",
+    # The two frozen contracts. Verifying the wheel but not these would
+    # let the product agree with core about the CODE and still disagree
+    # about what a ToolSpec is or what an effect status means.
+    "tool_spec_v1.yaml": "tool_spec_schema_sha256",
+    "postcondition_contract_v1.yaml": "postcondition_contract_schema_sha256",
 }
 
 
