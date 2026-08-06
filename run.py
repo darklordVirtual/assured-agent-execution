@@ -5,9 +5,13 @@
 
     python run.py up          verify the pin, generate secrets, sign, build,
                               migrate, start, and wait until healthy
-    python run.py scenarios   run the four decisions against the running stack
-    python run.py verify      pin + contract tests + end-to-end tests
-    python run.py down        stop everything and remove the volumes
+    python run.py scenarios   run the six decisions against the running stack
+    python run.py bench       score those decisions against a sealed answer key
+    python run.py verify      contracts + end-to-end + the benchmark
+    python run.py down        stop everything (keeps the data)
+
+    python run.py bench --list           what could be run
+    python run.py bench-verify           check a report against the audit chain
 
 The Makefile delegates every target here, so there is exactly one
 implementation. That is not tidiness: a shell version and a Python version
