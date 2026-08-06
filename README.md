@@ -105,7 +105,7 @@ the approval is welded to, and its position in the tamper-evident chain.
 `aae` lives in the venv `run.py up` created; `python -m aae.cli` works without
 activating it.
 
-`python run.py verify` runs all 168 tests. Among them,
+`python run.py verify` runs all 176 tests. Among them,
 `tests/e2e/test_toolspec.py` attacks the bundle this deployment is actually
 running — six tamper shapes, a revoked signer, and a correctly-signed *older*
 bundle. Every signature check passes on that last one, because it really was
@@ -155,8 +155,10 @@ command. It is **not** production-ready:
   signs. Asymmetric signing is deferred to v2 upstream.
 - Tools run inside the control-plane process. The credential separation is at
   the database, not at a process boundary.
-- No external security review, no OIDC, no signed image, no SBOM, no
-  provenance. The pinned core is a deliberate prerelease.
+- No external security review, no OIDC, no signed image, and no build
+  provenance. `python run.py sbom` inventories the Python tree in each
+  image and says plainly what it leaves out. The pinned core is a
+  deliberate prerelease.
 
 AAE does not claim agents are always correct, that all tools can be
 effect-verified, that safety is guaranteed, or that bypass is impossible when

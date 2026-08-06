@@ -77,6 +77,16 @@ jobs:
       - name: The signed ToolSpec bundle still verifies
         run: python run.py check-sign
 
+      - name: Inventory what shipped
+        run: python run.py sbom --out ./sbom
+
+      - name: Publish the SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+
       - name: Diagnostics on failure
         if: failure()
         run: |

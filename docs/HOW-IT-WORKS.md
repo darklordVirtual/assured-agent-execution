@@ -156,7 +156,8 @@ must produce.
 python run.py sign        # re-sign after changing registry.py or tool_specs.json
 python run.py check-sign  # verify without re-signing
 python run.py doctor      # what is pinned, served, reachable
-python run.py verify      # all 168 tests
+python run.py verify      # all 176 tests
+python run.py sbom        # what is actually inside the images
 aae lifecycle <id>        # the event trail, --json for everything
 aae evidence export --out ./evidence <proposal-id> ...
 ```
@@ -226,6 +227,31 @@ and nobody finds out until the restore. Every read-only connection in this
 product is `autocommit` for the same reason.
 
 *Checked by* `tests/e2e/test_backup_restore.py`.
+
+## What ships inside the images
+
+```bash
+python run.py sbom --out ./sbom
+```
+
+CycloneDX 1.5 per image, read from installed package metadata inside the
+container — so it lists what is actually there, not what a requirements file
+claims. Each image is identified by digest, because two builds of one
+Dockerfile are not the same artifact. CI publishes it as a build artifact on
+every run.
+
+It states its own limits, and the tests assert that it keeps stating them:
+Debian packages in the base layer are **not** itemised (that needs a scanner
+this product does not ship, and a partial inventory presented as a complete
+one converts an unknown into a false assurance), and this is **not** build
+provenance — provenance is an attestation by the builder that an output came
+from a given input; this is an observation of a built image, made afterwards.
+
+The first version pip-installed a generator inside the container and failed,
+because the container runs read-only. An inventory tool that has to modify
+what it inventories is the wrong tool.
+
+*Checked by* `tests/e2e/test_sbom.py`.
 
 ## Upgrading the pinned core
 

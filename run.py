@@ -217,6 +217,13 @@ def t_restore(args) -> None:
     run([str(VENV_PY), "scripts/backup.py", "restore", source])
 
 
+def t_sbom(args) -> None:
+    """Inventory what is actually inside the built images."""
+    _ensure_deps()
+    run([str(VENV_PY), "scripts/sbom.py", "--out",
+         getattr(args, "out", None) or "./sbom"])
+
+
 def t_clean(_args) -> None:
     """Remove the venv and downloaded artifacts. Keeps .env."""
     for path in (VENV, ROOT / "dist", ROOT / ".pytest_cache"):
@@ -229,7 +236,8 @@ TARGETS = {
     "deps": t_deps, "sign": t_sign, "check-sign": t_check_sign,
     "verify": t_verify, "compat": t_compat, "e2e": t_e2e,
     "scenarios": t_scenarios, "doctor": t_doctor, "logs": t_logs, "ps": t_ps,
-    "backup": t_backup, "restore": t_restore, "clean": t_clean,
+    "backup": t_backup, "restore": t_restore, "sbom": t_sbom,
+    "clean": t_clean,
 }
 
 
