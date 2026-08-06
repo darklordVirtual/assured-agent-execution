@@ -121,3 +121,46 @@ def test_a_prerelease_pin_says_why() -> None:
         assert LOCK.get("release_status_reason", "").strip(), (
             "a non-stable pin must record why it is not stable"
         )
+
+
+# ── The document that quotes the pin ───────────────────────────────────────
+
+def test_the_pinned_core_document_quotes_the_current_pin() -> None:
+    """docs/pinned-core.md names a release, a commit and a version.
+
+    A reference document that quotes values goes stale the moment they move,
+    and a stale one is worse than none: it looks authoritative. This binds it
+    to the lock, so a pin bump that forgets the document fails here rather
+    than misleading the next reader.
+    """
+    doc = (ROOT / "docs" / "pinned-core.md").read_text(encoding="utf-8")
+    for field, value in (
+        ("release_tag", LOCK["release_tag"]),
+        ("remora_core_commit", LOCK["remora_core_commit"]),
+        ("remora_core_version", LOCK["remora_core_version"]),
+        ("wheel filename", LOCK["wheel"]["filename"]),
+    ):
+        assert value in doc, (
+            f"docs/pinned-core.md does not name the current {field} "
+            f"({value}). Update the document with the pin.")
+
+
+def test_the_pinned_core_document_names_every_pinned_artifact() -> None:
+    """Seven digests in the lock, seven artifacts in the table."""
+    doc = (ROOT / "docs" / "pinned-core.md").read_text(encoding="utf-8")
+    for filename in ("core-release-manifest.json", "openapi.json",
+                     "public_api_v1.json", "execution_lifecycle_v1.yaml",
+                     "tool_spec_v1.yaml", "postcondition_contract_v1.yaml"):
+        assert filename in doc, f"{filename} is pinned but not documented"
+
+    declared = sum(1 for key in LOCK if key.endswith("_sha256")) + 1
+    assert f"{declared} artifacts" in doc or "Seven artifacts" in doc, (
+        f"the lock pins {declared} artifacts; the document does not say so")
+
+
+def test_the_document_states_the_prerelease_status() -> None:
+    """A reader must not have to open the lock to learn the pin is not blessed."""
+    if LOCK.get("release_status") == "stable":
+        pytest.skip("the pin is stable; nothing to disclose")
+    doc = (ROOT / "docs" / "pinned-core.md").read_text(encoding="utf-8")
+    assert "prerelease" in doc.lower()
