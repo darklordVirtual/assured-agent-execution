@@ -49,14 +49,14 @@ def key() -> str:
     load_env_file()
     value = os.getenv("REMORA_TOOLSPEC_SIGNING_KEY", "").strip()
     if not value:
-        pytest.skip("no signing key configured; run `make up`")
+        pytest.skip("no signing key configured; run `python run.py up`")
     return value
 
 
 @pytest.fixture(scope="module")
 def signed() -> dict:
     if not SIGNED.is_file():
-        pytest.skip(f"no signed bundle at {SIGNED}; run `make sign`")
+        pytest.skip(f"no signed bundle at {SIGNED}; run `python run.py sign`")
     return json.loads(SIGNED.read_text(encoding="utf-8"))
 
 
@@ -113,7 +113,7 @@ def test_each_callable_digest_matches_the_deployed_source(signed) -> None:
             inspect.getsource(fn).encode("utf-8")).hexdigest()
         assert spec["callable_digest"] == expected, (
             f"{spec['tool_id']}: the signed spec attests a different "
-            f"implementation than the one registered. Re-run `make sign`."
+            f"implementation than the one registered. Re-run `python run.py sign`."
         )
 
 
@@ -216,11 +216,11 @@ def test_the_running_deployment_pins_a_digest(signed) -> None:
     assert pinned, (
         "REMORA_TOOLSPEC_PINNED_DIGEST is not set. The bundle is signed and "
         "unpinned, so a correctly-signed older bundle would be accepted. Run "
-        "`make sign`."
+        "`python run.py sign`."
     )
     assert pinned == hashlib.sha256(
         canonical_signing_bytes(signed)).hexdigest(), (
-        "the pinned digest is not the shipped bundle's; re-run `make sign`")
+        "the pinned digest is not the shipped bundle's; re-run `python run.py sign`")
 
 
 # ── What the running control plane reports ─────────────────────────────────

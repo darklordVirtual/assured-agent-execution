@@ -48,7 +48,7 @@ jobs:
           pip install -e .
 
       - name: Contract, manifest agreement and import boundary
-        run: python -m pytest tests/compatibility -q
+        run: python run.py check
 
   vertical:
     name: The product, running
@@ -72,10 +72,22 @@ jobs:
         run: python run.py scenarios
 
       - name: End-to-end, security and fault tests
+        # AAE_REQUIRE_LIVE is set by run.py: a skipped suite fails here
+        # rather than reporting green for tests that never ran.
         run: python run.py e2e
 
       - name: The signed ToolSpec bundle still verifies
         run: python run.py check-sign
+
+      - name: Inventory what shipped
+        run: python run.py sbom --out ./sbom
+
+      - name: Publish the SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
 
       - name: Diagnostics on failure
         if: failure()
@@ -86,4 +98,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: python run.py down
+        run: python run.py reset

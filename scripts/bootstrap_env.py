@@ -99,7 +99,18 @@ def _free_port(start: int, attempts: int = 40) -> int:
                 continue
     return start
 
+def _utf8() -> None:
+    """UTF-8 output, from the one shared implementation."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "src"))
+    from aae._io import force_utf8_output
+
+    force_utf8_output()
+
+
 def main() -> int:
+    _utf8()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--force", action="store_true",
@@ -117,7 +128,7 @@ def main() -> int:
             "under the old keys become UNVERIFIABLE — not invalid, "
             "unverifiable, which no later export can repair.\n"
             "  Existing database volumes also keep the OLD passwords; run "
-            "`make down` (which removes them) or this stack will not start.",
+            "`python run.py down` (which removes them) or this stack will not start.",
             file=sys.stderr,
         )
 

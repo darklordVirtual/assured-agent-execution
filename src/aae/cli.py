@@ -24,7 +24,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from aae._io import force_utf8_output
 from aae.config import Config, ConfigError
+from aae.evidence import plain
 
 EXIT_OK = 0
 EXIT_FAILED = 1        # the system answered, and the answer is a failure
@@ -91,7 +93,8 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     # not be able to write. A doctor that only proved connectivity would miss
     # the property that matters.
     try:
-        with psycopg.connect(cfg.reader_dsn, connect_timeout=5) as conn:
+        with psycopg.connect(cfg.reader_dsn, connect_timeout=5,
+                             autocommit=True) as conn:
             conn.read_only = True
             with conn.cursor() as cur:
                 cur.execute("SELECT count(*) FROM work_orders")
@@ -103,7 +106,7 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
         ok = False
 
     if not ok:
-        print("\n  not healthy. try: make up")
+        print("\n  not healthy. try: python run.py up")
     return EXIT_OK if ok else EXIT_UNAVAILABLE
 
 
@@ -200,21 +203,80 @@ def cmd_execute(cfg: Config, args: argparse.Namespace) -> int:
         result = (client.execute_accepted(json.loads(args.token), call)
                   if args.accepted
                   else client.execute(args.review_item_id, call))
+    from aae.execution import read_verdict
+
+    verdict = read_verdict(result)
     print(json.dumps({"proposal_id": result.proposal_id,
-                      "outcome": result.outcome,
-                      "detail": result.detail}, indent=2))
-    # A refusal is an OUTCOME here, not an exception. Exiting 0 on
-    # binding_refused would let a script treat it as success — which is the
-    # exact mistake this product made in its own scenarios.
-    return EXIT_OK if result.outcome == "execute" else EXIT_FAILED
+                      "outcome": verdict.outcome,
+                      "tool_executed": verdict.executed,
+                      "refusal_reason": verdict.refusal_reason or None,
+                      "error": verdict.error or None,
+                      "detail": verdict.detail,
+                      "summary": verdict.describe()}, indent=2))
+    # Two fields, two questions. `outcome` says the governed step ran;
+    # `tool_execution.executed` says the tool acted. A refusal arrives as an
+    # OUTCOME rather than an exception, and a tool that RAISES still reports
+    # outcome="execute" with the nonce burned. Exiting 0 on either would let a
+    # script record a failed action as a completed one.
+    return EXIT_OK if verdict.acted else EXIT_FAILED
+
+
+#: Fields worth surfacing per event, in the order an operator reads them.
+#: Everything else stays in --json: a wall of raw dict is not a trail anyone
+#: can follow, and this command exists to be read.
+_TRAIL_FIELDS = (
+    ("tool_name", "tool"),
+    ("target_environment", "target"),
+    ("actor", "actor"),
+    ("required_role", "role"),
+    ("toolspec_hash", "toolspec"),
+    ("intent_authority_hash", "authority"),
+    ("tool_call_hash", "payload"),
+    ("outcome", "outcome"),
+    ("status", "effect"),
+)
+
+
+def _short(value: object) -> str:
+    """Hashes truncated, everything else as-is.
+
+    A 64-character hex string carries one useful bit in a trail — whether it
+    matches the one on the line above — and eight characters carry it fine.
+    """
+    text = str(value)
+    if len(text) == 64 and all(c in "0123456789abcdef" for c in text):
+        return text[:8] + "…"
+    return text
 
 
 def cmd_lifecycle(cfg: Config, args: argparse.Namespace) -> int:
+    """The ordered event trail for one proposal."""
     with _client(cfg, "viewer") as client:
         trail = client.get_lifecycle(args.proposal_id)
-    print(f"proposal {trail.proposal_id} — state {trail.current_state}")
+
+    if args.json:
+        print(json.dumps(plain(trail.raw), indent=2, default=str))
+        return EXIT_OK
+
+    print(f"proposal {trail.proposal_id}")
+    print(f"state    {trail.current_state}")
     for event in trail.events:
-        print(f"  {event}")
+        payload = dict(event.get("payload") or {})
+        merged = {**payload, **{k: v for k, v in event.items()
+                                if k != "payload"}}
+        name = merged.get("event", "?")
+        decision = merged.get("decision")
+        reasons = ", ".join(merged.get("reasons") or [])
+        headline = name if not decision else f"{name} → {decision}"
+        if reasons:
+            headline += f" ({reasons})"
+        print()
+        print(f"  #{merged.get('sequence_no', '?')}  {headline}")
+        for key, label in _TRAIL_FIELDS:
+            if (value := merged.get(key)) not in (None, "", []):
+                print(f"        {label:9s} {_short(value)}")
+        if entry := merged.get("entry_hash"):
+            print(f"        {'chain':9s} {_short(entry)}")
     return EXIT_OK
 
 
@@ -235,9 +297,17 @@ def cmd_verify_effect(cfg: Config, args: argparse.Namespace) -> int:
         if view is not None and not args.no_record:
             recorded = client.record_effect(args.proposal_id, view)
             print(f"recorded in the chain as {recorded.status.value}")
-    # Only a MISMATCH is a failure exit: the unknowns are not evidence that
-    # anything went wrong, and a CI job must not treat them as one.
-    if view is not None and view.status.is_terminal:
+    # MISMATCH specifically — not `is_terminal`.
+    #
+    # `is_terminal` means "this is a settled answer", and VERIFIED and
+    # UNSUPPORTED are both settled. Branching on it made a successfully
+    # verified effect exit 1, so a CI job wired to this command would have
+    # failed on every effect it confirmed. Conflating "final" with "bad" is
+    # the exact class of mistake this product exists to prevent, and a test
+    # now pins the distinction.
+    from remora.sdk import EffectStatus
+
+    if view is not None and view.status is EffectStatus.MISMATCH:
         return EXIT_FAILED
     return EXIT_OK
 
@@ -302,6 +372,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     lifecycle = sub.add_parser("lifecycle", help="the ordered event trail")
     lifecycle.add_argument("proposal_id")
+    lifecycle.add_argument("--json", action="store_true",
+                           help="the full record, unabridged")
     lifecycle.set_defaults(func=cmd_lifecycle)
 
     effect = sub.add_parser("verify-effect",
@@ -324,30 +396,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _force_utf8_output() -> None:
-    """Print UTF-8 regardless of the console's default codepage.
-
-    A Windows console defaults to cp1252, which cannot encode the arrows and
-    box characters in the scenario report. Without this, `aae scenarios`
-    crashes with UnicodeEncodeError *after* running the scenarios — so the
-    work happened, the governance decisions were recorded, and the operator
-    sees a stack trace instead of the result.
-
-    ``errors="replace"`` rather than a strict encoder: a character we cannot
-    render must degrade to a placeholder, never take down a command whose real
-    output is the decisions it just reported.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is not None:
-            try:
-                reconfigure(encoding="utf-8", errors="replace")
-            except (OSError, ValueError):
-                pass  # a redirected or already-wrapped stream; not fatal
-
-
 def main(argv: list[str] | None = None) -> int:
-    _force_utf8_output()
+    force_utf8_output()
     args = build_parser().parse_args(argv)
     try:
         cfg = Config.from_env()

@@ -1,0 +1,38 @@
+# Nothing secret or local may enter a build context.
+#
+# The Dockerfiles do not COPY .env — but a build context is uploaded to the
+# daemon whole, and "the Dockerfile does not reference it" is not the same as
+# "it was never sent". Signing keys, database passwords and bearer tokens all
+# live in .env.
+
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.gitignore
+.gitattributes
+
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+*.egg-info
+
+# Local output, none of which belongs in an image.
+backups
+evidence
+sbom
+check
+
+# The verified wheel is copied in explicitly by path; everything else in
+# dist/ is downloaded release assets the image has no use for.
+dist/*
+!dist/remora-*.whl
+
+docs
+README.md
+*.md
+!README.md

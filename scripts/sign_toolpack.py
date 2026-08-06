@@ -142,12 +142,23 @@ def load_key() -> str:
     key = os.getenv("REMORA_TOOLSPEC_SIGNING_KEY", "").strip()
     if not key:
         raise SystemExit(
-            "REMORA_TOOLSPEC_SIGNING_KEY is not set. Run `make up` (or "
+            "REMORA_TOOLSPEC_SIGNING_KEY is not set. Run `python run.py up` (or "
             "scripts/bootstrap_env.py) to generate this installation's keys.")
     return key
 
 
+def _utf8() -> None:
+    """UTF-8 output, from the one shared implementation."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "src"))
+    from aae._io import force_utf8_output
+
+    force_utf8_output()
+
+
 def main() -> int:
+    _utf8()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
                         help="verify the existing signed bundle, sign nothing")
@@ -161,7 +172,7 @@ def main() -> int:
         from remora.toolcall.toolspec import ToolSpecBundle, ToolSpecRefused
 
         if not SIGNED_OUTPUT.is_file():
-            print(f"no signed bundle at {SIGNED_OUTPUT}; run `make sign`",
+            print(f"no signed bundle at {SIGNED_OUTPUT}; run `python run.py sign`",
                   file=sys.stderr)
             return 1
         signed = json.loads(SIGNED_OUTPUT.read_text(encoding="utf-8"))

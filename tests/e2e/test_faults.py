@@ -210,6 +210,29 @@ def test_a_tool_that_raises_does_not_report_a_successful_execution(
             target_environment="prod", intent_ref="MAINT-PURGE-Q3"))
     except RemoraError:
         return  # refused outright: also correct
-    assert outcome.outcome != "executed", (
-        "a tool that raised was recorded as executed"
-    )
+    # Assert on the TOOL, not on the governance step.
+    #
+    # Two earlier versions of this line were both wrong. The first
+    # compared against "executed", a value the field never holds, so the
+    # test could not fail. The second compared against "execute" — but
+    # `outcome` describes the governed step, which correctly reports
+    # `execute` even when the tool raised and the nonce was burned.
+    #
+    # `tool_execution.executed` is the field that answers the question
+    # this test asks.
+    from aae.execution import read_verdict
+
+    verdict = read_verdict(outcome)
+    assert verdict.acted is False, (
+        f"a tool that raised was recorded as having acted: {verdict.describe()}")
+    # "Did not act" has several legitimate shapes, and this test must accept
+    # all of them while accepting nothing else:
+    #
+    #   tool raised          outcome=execute, executed=False, nonce burned
+    #   approval invalidated outcome=approval_invalidated, no tool block at all
+    #   refused outright     an exception, handled above
+    #
+    # The property is that the failure is READABLE — an operator must be able
+    # to tell which of these happened, from the response alone.
+    assert verdict.describe(), "the failure left no readable trace"
+    assert verdict.outcome, "no outcome was reported at all"

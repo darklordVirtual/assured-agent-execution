@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS work_order_events (
     event_id     BIGSERIAL PRIMARY KEY,
     wo_id        TEXT        NOT NULL,
     tool_name    TEXT        NOT NULL,
+    -- Reserved, and currently always NULL. REMORA's dispatcher calls a
+    -- tool as fn(arguments), so the callable is never told which proposal
+    -- authorized it. Correlation with the audit chain is therefore by
+    -- work order, tool, actor and time — not an unambiguous join. Left in
+    -- place because an unfilled column is a visible gap; removing them
+    -- would hide one. Needs an execution context from upstream.
     execution_id TEXT,
     proposal_id  TEXT,
     actor        TEXT        NOT NULL,

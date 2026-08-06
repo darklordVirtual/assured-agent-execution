@@ -6,3 +6,6 @@ __pycache__/
 .env
 *.egg-info/
 evidence/
+backups/
+sbom/
+toolpacks/work_order/tool_specs.signed.json

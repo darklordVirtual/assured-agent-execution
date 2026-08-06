@@ -99,7 +99,7 @@ class Config:
         if missing:
             raise ConfigError(
                 f"missing configuration: {', '.join(missing)}. "
-                f"Run `make up` (or `python scripts/bootstrap_env.py`) to "
+                f"Run `python run.py up` (or `python scripts/bootstrap_env.py`) to "
                 f"generate this installation's secrets."
             )
         # The reader connects from the host, so it reaches the system of

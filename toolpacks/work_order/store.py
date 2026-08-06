@@ -61,6 +61,12 @@ def writer() -> Iterator[psycopg.Connection]:
 def reader() -> Iterator[psycopg.Connection]:
     """Read-only connection for effect verification.
 
+    ``autocommit=True`` matters more than it looks. Without it psycopg
+    holds a transaction open for the whole block, and one verification
+    that stalls then blocks ``pg_dump`` — which is how a scheduled
+    backup ends up hanging in silence. A reader has nothing to keep a
+    transaction for.
+
     ``read_only=True`` is belt to the grants' braces: if this process is ever
     handed a DSN with more rights than it should have, the transaction still
     refuses to write. Defence in depth is cheap here and the failure it
@@ -68,7 +74,7 @@ def reader() -> Iterator[psycopg.Connection]:
     is not recoverable after the fact.
     """
     with psycopg.connect(_dsn(READER_DSN_ENV, "reader"),
-                         row_factory=dict_row) as conn:
+                         row_factory=dict_row, autocommit=True) as conn:
         conn.read_only = True
         yield conn
 
@@ -101,10 +107,19 @@ def record_event(
 ) -> None:
     """Append the product's own record of a governed write.
 
-    Kept alongside REMORA's audit chain rather than instead of it. Two
-    independent records that agree are worth more than one; two that disagree
-    is a finding an operator can act on, where a single record that cannot be
-    cross-checked is only a claim.
+    Kept alongside REMORA's audit chain rather than instead of it.
+
+    **It carries no proposal or execution id, and cannot yet.** REMORA's
+    dispatcher invokes a tool as ``fn(arguments)`` — the callable is never
+    told which proposal authorized it. So correlation between this log and
+    the audit chain is by work order, tool name, actor and time, which is
+    useful and is NOT the unambiguous join a shared id would give.
+
+    The columns exist and stay NULL deliberately: an unfilled column is a
+    visible gap, where dropping them would hide one. Closing this needs an
+    execution context from the dispatcher, which is upstream work — a tool
+    that chose its own correlation ids would be attesting to its own
+    provenance.
     """
     from psycopg.types.json import Jsonb
 
