@@ -23,6 +23,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual, so the gate can be run against a branch without pushing a commit
+  # to provoke it — and so "did CI even fire?" is answerable directly rather
+  # than by inference from an empty run list.
+  workflow_dispatch:
 
 permissions:
   contents: read
