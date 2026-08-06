@@ -117,7 +117,7 @@ def main() -> int:
             "under the old keys become UNVERIFIABLE — not invalid, "
             "unverifiable, which no later export can repair.\n"
             "  Existing database volumes also keep the OLD passwords; run "
-            "`make down` (which removes them) or this stack will not start.",
+            "`python run.py down` (which removes them) or this stack will not start.",
             file=sys.stderr,
         )
 

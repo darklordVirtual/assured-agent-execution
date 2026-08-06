@@ -58,7 +58,7 @@ def test_the_audit_chain_verifies(viewer) -> None:
 # ── The four decisions ─────────────────────────────────────────────────────
 
 def test_a_grounded_read_is_accepted_and_executes(live, agent) -> None:
-    outcome = scenarios.scenario_accept(live, agent, None)
+    outcome = scenarios.accept(live, agent)
     assert outcome.passed, f"{outcome.detail}\n  " + "\n  ".join(outcome.steps)
 
 
@@ -71,19 +71,19 @@ def test_a_production_write_is_held_approved_executed_and_verified(
     effect read back on a credential that cannot write → attested in the
     chain.
     """
-    outcome = scenarios.scenario_verify(live, agent, None)
+    outcome = scenarios.verify(live, agent)
     assert outcome.passed, f"{outcome.detail}\n  " + "\n  ".join(outcome.steps)
 
 
 def test_a_call_with_no_resolvable_authority_abstains(
     live, agent
 ) -> None:
-    outcome = scenarios.scenario_abstain(live, agent, None)
+    outcome = scenarios.abstain(live, agent)
     assert outcome.passed, f"{outcome.detail}\n  " + "\n  ".join(outcome.steps)
 
 
 def test_a_destructive_tool_escalates(live, agent) -> None:
-    outcome = scenarios.scenario_escalate(live, agent, None)
+    outcome = scenarios.escalate(live, agent)
     assert outcome.passed, f"{outcome.detail}\n  " + "\n  ".join(outcome.steps)
 
 

@@ -103,7 +103,7 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
         ok = False
 
     if not ok:
-        print("\n  not healthy. try: make up")
+        print("\n  not healthy. try: python run.py up")
     return EXIT_OK if ok else EXIT_UNAVAILABLE
 
 

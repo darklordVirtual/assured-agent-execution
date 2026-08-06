@@ -8,7 +8,7 @@ mocked: the point is to exercise the product an external developer installs,
 not a rehearsal of it.
 
 If the stack is not up, every test here SKIPS with an instruction rather than
-failing. A red suite that only means "you did not run make up" trains people
+failing. A red suite that only means "you did not run run.py up" trains people
 to ignore red.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ def live(cfg: Config) -> Config:
         with RemoraClient(cfg.api_url, cfg.token_viewer) as client:
             client._request("GET", "/v1/health")  # noqa: SLF001
     except RemoraUnavailableError:
-        pytest.skip(f"no control plane at {cfg.api_url} — run `make up`")
+        pytest.skip(f"no control plane at {cfg.api_url} — run `python run.py up`")
     return cfg
 
 

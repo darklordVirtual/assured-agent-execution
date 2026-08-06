@@ -1,50 +1,26 @@
 # Assured Agent Execution
 
-**Deterministic governance and controlled execution for probabilistic AI agents**
+**An AI agent proposes an action. This decides whether it happens.**
 
-Powered by REMORA.
+Every proposal gets exactly one of four answers — **ACCEPT**, **VERIFY**,
+**ABSTAIN**, **ESCALATE** — and the answer is bound to the exact payload, the
+exact tool, and a work order the agent cannot forge. After a write, a separate
+process on a read-only credential goes and checks the change actually landed.
 
-> **Maturity:** `0.1.0-dev`, Gate C vertical. The product installs, runs and
-> proves its own claims on one command. It is **not** production-ready: no
-> external security review has run against it, the pinned core is a
-> deliberate prerelease, and there is no signed image, SBOM or build
-> provenance. See [Non-claims](#non-claims).
-
-A governed proposal receives exactly one of four decisions — **ACCEPT**,
-**VERIFY**, **ABSTAIN**, **ESCALATE**. AAE binds authorization to the exact
-payload, dispatches through credentials the agent never holds, reads the
-effect back on a credential that cannot write it, and exports a tamper-evident
-record.
-
-## Install
-
-Requires Docker, Python 3.11+, and the GitHub CLI (`gh`, to fetch the pinned
-core release).
+Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
 
 ```bash
 git clone https://github.com/darklordVirtual/assured-agent-execution
 cd assured-agent-execution
-python run.py up          # verify the pin, generate secrets, sign, build, migrate, start
-python run.py scenarios   # run the four decisions against what you just started
+python run.py up          # ~3 min: verifies the pinned core, generates keys, builds, migrates
+python run.py scenarios
 ```
 
-`make up` / `make scenarios` do the same thing — the Makefile delegates to
-`run.py`, so there is one implementation and it cannot drift from the
-documentation. `make` is not installed on a default Windows machine, which is
-why the commands above do not need it.
+No configuration. `run.py up` generates this installation's own signing keys,
+database passwords and bearer tokens, picks free ports, and prints the URLs.
+You need Docker, Python 3.11+, and `gh` (to fetch the pinned core release).
 
-There is nothing to fill in first. `python run.py up` generates this
-installation's signing keys, database passwords and bearer tokens into `.env`,
-so no two installs share a credential — not even two developers on the same
-team. It also probes for free host ports rather than hardcoding 8080, and
-prints the URLs it chose:
-
-```
-  API       http://localhost:8088
-  Console   http://localhost:8089
-```
-
-## What `python run.py scenarios` proves
+## What you'll see
 
 ```
 [PASS] ACCEPT: grounded read under signed WO-1201
@@ -64,131 +40,107 @@ prints the URLs it chose:
 [PASS] ESCALATE: purge work-order history → required_role=senior_authority
 [PASS] BINDING: approve one payload, execute another → binding_refused
 [PASS] ROLES: the approver cannot execute
+
+6/6 scenarios behaved as documented
 ```
 
-Read the VERIFY trace closely, because it is the whole product in six lines: a
-production write was held; the agent that proposed it was refused the right to
-approve it; the identity the *decision* named — not a generic approver —
-released it; the operator executed; and a separate process holding a
-`SELECT`-only credential went and looked at the database to confirm the
-approved change had actually happened.
+The VERIFY block is the whole product. A production write was held. The agent
+that proposed it was refused the right to approve it. The identity the
+*decision* named — a domain expert, not a generic approver — released it. The
+operator executed. Then a different process, holding `SELECT` and nothing
+else, opened the database and confirmed the change was really there.
+
+Don't take its word for it:
+
+```bash
+docker compose exec workorder-db psql -U wo_admin -d workorders \
+  -c "SELECT wo_id, status, updated_by FROM work_orders ORDER BY wo_id"
+```
+
+`WO-1202` is closed, and the row names the tool that closed it.
+
+Then open the console the run printed — usually <http://localhost:8089>.
+
+## Try to break it
+
+```bash
+# Approve one work order, execute a different one
+aae propose set_work_order_priority wo_id=WO-1203 priority=high --intent WO-1203
+aae approve <review_item_id>
+aae execute <review_item_id> set_work_order_priority wo_id=WO-1201 priority=high --intent WO-1203
+#  → binding_refused: tool-call hash differs from the approved payload
+
+# Act under a work order nobody issued
+aae propose read_work_order wo_id=WO-1201 --intent WO-9999 --env staging
+#  → abstain   (identical tool, arguments and risk tier as the ACCEPT above)
+
+# Edit the signed ToolSpec bundle, then ask it to verify
+python run.py check-sign
+#  → toolspec_signature_invalid: its content changed after signing
+```
+
+`aae` lives in the venv `run.py up` created; `python -m aae.cli` works without
+activating it.
+
+`python run.py verify` runs all 126 tests. Among them,
+`tests/e2e/test_toolspec.py` attacks the bundle this deployment is actually
+running — six tamper shapes, a revoked signer, and a correctly-signed *older*
+bundle. Every signature check passes on that last one, because it really was
+signed here. Only the pinned digest refuses it.
 
 ## What each boundary buys
 
 | Boundary | What it prevents |
 |---|---|
-| Risk classification lives in `tool_metadata.json`, hashed into REMORA's policy identity | A tool cannot classify itself, and relabelling one invalidates every execution lease issued before the relabel |
-| Work-order authority is resolved **server-side** from a file the deployment controls | The agent names which authority it acts under and can never assert that the authority exists or says what it claims |
-| ToolSpec bundle signed with a deployment key (`python run.py sign`) | Argument schemas, allowed targets and credential scopes cannot be edited by the thing they constrain — and the **pinned digest** refuses a correctly-signed *older* bundle, because a signature proves authenticity, never currency |
-| Approval is bound to the exact tool-call hash | Getting a yes for one payload and executing another — the realistic attack on human-in-the-loop, which is never "bypass the human" |
-| `operator` / `reviewer` / `domain_expert` / `senior_authority` / `viewer`, none of them `admin` | One credential that can both approve and execute makes every other control decorative |
-| The postcondition reader holds `SELECT` and nothing else | A verifier that could write the state it verifies is reporting on itself |
-| `EFFECT_UNOBSERVABLE` / `EFFECT_VERIFIER_FAILED` are non-terminal; only `EFFECT_MISMATCH` is | "We could not look" is not "it was wrong". Collapsing them would close incidents that are still open, or open incidents for actions that succeeded |
+| Risk tiers live in a data file, hashed into REMORA's policy identity | A tool cannot classify itself, and relabelling one invalidates every execution lease issued before the relabel |
+| Work-order authority is resolved **server-side** | The agent names which authority it acts under; it can never assert that the authority exists or says what it claims |
+| The ToolSpec bundle is signed, and its digest pinned | Argument schemas, allowed targets and credential scopes cannot be edited by the thing they constrain — and a signature proves authenticity, never currency |
+| Approval is bound to the exact tool-call hash | Getting a yes for one payload and executing another. The realistic attack is never "bypass the human" |
+| Five roles, none of them `admin` | One credential that can both approve and execute makes every other control decorative |
+| The effect reader holds `SELECT` and nothing else | A verifier that could write the state it verifies is reporting on itself |
+| `UNOBSERVABLE` and `VERIFIER_FAILED` are non-terminal; only `MISMATCH` is | "We could not look" is not "it was wrong" — one closes incidents that are still open, the other opens incidents for actions that succeeded |
+
+[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) explains the design, and names the
+test that checks each claim.
 
 ## The dependency direction
 
-AAE consumes versioned REMORA artifacts. It never installs from
-`REMORA-research/master` and never imports `remora.policy`,
-`remora.enforcement`, `remora.governance` or `servers`.
+The control plane **is** REMORA's governance API, installed from a
+hash-verified wheel and run as a service. No REMORA checkout, no submodule.
+Running a package is not importing one: no file here may import
+`remora.policy`, `remora.enforcement`, `remora.governance` or `servers`, and a
+test scans every source file to make sure none does.
 
-The control plane **is** REMORA's governance API, installed from the pinned
-wheel and run as a service. `servers/` and `schemas/` ship inside that wheel,
-so running it is *deploying* the core, not importing it — and
-`tests/compatibility` enforces that no AAE source file crosses the line.
+Seven artifacts are pinned by SHA-256 — the wheel, the release manifest, the
+OpenAPI document, the SDK surface, and three frozen contracts.
+`scripts/verify_core_pin.py` refuses on any mismatch, because a pin nobody
+verifies is a comment rather than a control.
 
-This repository pins release
-[`core-candidate-2026.08.06.3`](https://github.com/darklordVirtual/REMORA-research/releases/tag/core-candidate-2026.08.06.3),
-built from a clean checkout of `aff4edf`:
+## Maturity
 
-| Artifact | Pinned by |
-|---|---|
-| `remora-0.10.0-py3-none-any.whl` | SHA-256 |
-| `core-release-manifest.json` | SHA-256 |
-| `openapi.json` | SHA-256 |
-| `public_api_v1.json` (36 SDK symbols) | SHA-256 |
-| `execution_lifecycle_v1.yaml` | SHA-256 |
-| `tool_spec_v1.yaml` | SHA-256 |
-| `postcondition_contract_v1.yaml` | SHA-256 |
+Version `0.1.0-dev`. It installs, runs, and proves the claims above on one
+command. It is **not** production-ready:
 
-`scripts/verify_core_pin.py` downloads them and **refuses on any hash
-mismatch** — a pin nobody verifies is a comment, not a control. It also
-verifies the copy checked into this tree, because verifying only the download
-left the in-tree manifest free to rot, and it did for two pin bumps.
+- A fully grounded *medium*-risk write falls through to ABSTAIN with no review
+  item and no path an approver could take. Declaring a risk tier currently
+  leaves a tool worse off than leaving it unknown. Open upstream.
+- `callable_digest` is signed and true, but REMORA 0.10.0 records it without
+  checking it at dispatch.
+- ToolSpec signing is HMAC, so the process that verifies holds the key that
+  signs. Asymmetric signing is deferred to v2 upstream.
+- Tools run inside the control-plane process. The credential separation is at
+  the database, not at a process boundary.
+- No external security review, no OIDC, no signed image, no SBOM, no
+  provenance. The pinned core is a deliberate prerelease.
 
-`tests/compatibility/test_pin_manifest_agreement.py` then compares the
-hand-written lock against the release-generated manifest field by field, so
-the two cannot disagree silently again.
-
-One dependency is *not* on the stable namespace and is not hidden:
-`toolpacks/work_order/bundle.py` imports nine types from `remora.toolcall.*`
-to declare what this deployment's tools mean, because no equivalent exists in
-`remora.sdk`. `test_toolpack_authoring_surface.py` pins the exact symbols and
-constructor keywords, and its last test asserts `remora.sdk` does not yet
-offer them — when that test fails, it is the signal to move the imports.
-
-## Verify it yourself
-
-```bash
-python run.py verify      # pin + 71 contract tests + 55 end-to-end tests
-python run.py check-sign  # verify the signed ToolSpec bundle without re-signing
-python run.py doctor       # what is pinned, what is served, what is reachable
-```
-
-The end-to-end suite includes `tests/e2e/test_toolspec.py`, which takes the
-bundle this deployment actually runs and attacks it — widening allowed
-targets, rewriting the description an agent reads, escalating credential
-scope, reclassifying a destructive tool as routine, presenting a revoked
-signer, and presenting a correctly-signed older bundle. Every one is refused.
-
-## Documentation
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — what runs where, and why each
-  boundary is where it is
-- [docs/ONBOARDING.md](docs/ONBOARDING.md) — install, run and verify in 30
-  minutes without reading the research repository
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — signing, rotation, evidence
-  export, and what to do when an effect does not verify
-
-## Known gaps
-
-Stated here rather than discovered later.
-
-- **A fully grounded medium-risk mutation abstains.** It falls through every
-  rule to `default_safe_abstain`: no review item, no `ResolutionPlan`, no path
-  an approver could take, for an action a signed work order authorizes. High
-  risk hits `evidence_insufficient`; ungrounded arguments hit their own rule;
-  medium-and-grounded matches neither, so declaring a risk tier leaves a tool
-  *worse off* than leaving it unknown. Raised upstream.
-- **`callable_digest` is recorded, not enforced.** `ToolSpecBundle.verify_callable`
-  exists in REMORA 0.10.0 and nothing calls it at dispatch. AAE computes the
-  real source digest and a test asserts it matches, so the field is true — but
-  until core wires the check, a swapped callable is caught by the policy bundle
-  hash over the module source, not by the spec.
-- **HMAC signing is symmetric.** The process that verifies the ToolSpec bundle
-  holds the key that signs it. "The agent cannot sign its own spec" is only as
-  strong as the agent's inability to read the control plane's environment. The
-  frozen contract defers asymmetric signing to v2.
-- **Tools run in the control-plane process.** `GovernedToolDispatcher` holds
-  the callables, so the credential separation that exists is at the *database*
-  (writer vs reader), not at a process boundary. A credential-isolated worker
-  needs a remote dispatch boundary REMORA does not yet have.
-- **Effect verification covers tools that declare a reader.** A tool without
-  one reports `EFFECT_UNSUPPORTED`, recorded so the absence is visible — that
-  is not a verified effect.
-- No OIDC, no backup/restore procedure, no external review, no signed image,
-  no SBOM, no build provenance.
-
-## Non-claims
-
-AAE does not claim that agents are always correct, that all tools can be
-effect-verified, that safety is guaranteed, or that bypass remains impossible
-when agents retain direct tool credentials.
+AAE does not claim agents are always correct, that all tools can be
+effect-verified, that safety is guaranteed, or that bypass is impossible when
+an agent keeps direct tool credentials.
 
 ## License
 
-Source-available under Business Source License 1.1. Commercial production use
-requires separate written terms. See [LICENSING.md](LICENSING.md).
+Source-available under Business Source License 1.1; commercial production use
+needs separate written terms. See [LICENSING.md](LICENSING.md).
 
-The pinned REMORA core is a **separate** Licensed Work under its own copy of
-the same license: an AAE license grants nothing in REMORA, and vice versa. A
-deployment runs both and needs to be permitted under both.
+The pinned REMORA core is a **separate** Licensed Work — an AAE license grants
+nothing in REMORA, and vice versa. A deployment runs both.

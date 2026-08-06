@@ -142,7 +142,7 @@ def load_key() -> str:
     key = os.getenv("REMORA_TOOLSPEC_SIGNING_KEY", "").strip()
     if not key:
         raise SystemExit(
-            "REMORA_TOOLSPEC_SIGNING_KEY is not set. Run `make up` (or "
+            "REMORA_TOOLSPEC_SIGNING_KEY is not set. Run `python run.py up` (or "
             "scripts/bootstrap_env.py) to generate this installation's keys.")
     return key
 
@@ -161,7 +161,7 @@ def main() -> int:
         from remora.toolcall.toolspec import ToolSpecBundle, ToolSpecRefused
 
         if not SIGNED_OUTPUT.is_file():
-            print(f"no signed bundle at {SIGNED_OUTPUT}; run `make sign`",
+            print(f"no signed bundle at {SIGNED_OUTPUT}; run `python run.py sign`",
                   file=sys.stderr)
             return 1
         signed = json.loads(SIGNED_OUTPUT.read_text(encoding="utf-8"))
