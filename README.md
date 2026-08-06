@@ -20,10 +20,6 @@ AAE binds authorization to the exact tool call, separates approval from
 execution, verifies selected effects against the system of record, and records
 the complete execution lifecycle.
 
-> **Status:** local reference vertical, version `0.1.0-dev`. Not
-> production-hardened, and no external security review has been performed.
-> See [Limitations](docs/limitations.md).
-
 ## Architecture
 
 ```mermaid
