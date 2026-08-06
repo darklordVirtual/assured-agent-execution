@@ -37,6 +37,19 @@ services:
     expose: ["5432"]
     volumes:
       - control-plane-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Postgres drops from root to the postgres user at startup.
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    mem_limit: 512m
+    pids_limit: 128
 
   # ── The system of record ────────────────────────────────────────────
   # A separate database, so the effect reader can hold a credential that
@@ -54,9 +67,22 @@ services:
       timeout: 5s
       retries: 12
     ports:
-      - "${AAE_WORKORDER_DB_PORT:-55432}:5432"
+      - "127.0.0.1:${AAE_WORKORDER_DB_PORT:-55432}:5432"
     volumes:
       - workorder-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Postgres drops from root to the postgres user at startup.
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    mem_limit: 512m
+    pids_limit: 128
 
   # ── Migrations ──────────────────────────────────────────────────────
   # One-shot, under the admin role, before anything else connects. The
@@ -99,7 +125,7 @@ services:
       control-plane-db: {condition: service_healthy}
       workorder-migrate: {condition: service_completed_successfully}
     ports:
-      - "${AAE_API_PORT:-8088}:8000"
+      - "127.0.0.1:${AAE_API_PORT:-8088}:8000"
     environment:
       REMORA_ENV: production
       REMORA_ENABLED_SURFACES: execution
@@ -164,9 +190,26 @@ services:
       AAE_WORKORDER_DSN: postgresql://aae_worker:${AAE_WORKER_PASSWORD}@workorder-db:5432/workorders
 
       REMORA_EXECUTION_ARTIFACT_DIR: /var/lib/aae/artifacts
-      REMORA_PROMETHEUS_PUBLIC: "1"
+      # /metrics stays behind a bearer token. Inherited as "1" from the
+      # upstream pilot, where the comment said "local pilot only" — it
+      # discloses decision volumes and auth-failure counts to anyone who
+      # can reach the port. /v1/metrics is the authenticated view.
+      REMORA_PROMETHEUS_PUBLIC: "${AAE_PUBLIC_METRICS:-0}"
     volumes:
       - aae-artifacts:/var/lib/aae/artifacts
+    # Least privilege. Every one of these was absent until a survey of the
+    # running containers found writable root filesystems, full default
+    # capabilities and no resource ceiling — the state a security review
+    # flags before it reads any application code.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 1g
+    pids_limit: 256
 
   # ── Operator console ────────────────────────────────────────────────
   # Imports no REMORA module, holds no policy. Shells out to the product
@@ -178,7 +221,7 @@ services:
     depends_on:
       control-plane: {condition: service_healthy}
     ports:
-      - "${AAE_CONSOLE_PORT:-8089}:8090"
+      - "127.0.0.1:${AAE_CONSOLE_PORT:-8089}:8090"
     environment:
       AAE_API_URL: http://control-plane:8000
       AAE_TOKEN_AGENT: ${AAE_TOKEN_AGENT}
@@ -191,6 +234,19 @@ services:
       # Posture panel reports booleans, never the signing key itself.
       AAE_TOOLSPEC_CONFIGURED: "1"
       AAE_TOOLSPEC_PINNED: ${REMORA_TOOLSPEC_PINNED_DIGEST:+1}
+    # Least privilege. Every one of these was absent until a survey of the
+    # running containers found writable root filesystems, full default
+    # capabilities and no resource ceiling — the state a security review
+    # flags before it reads any application code.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 512m
+    pids_limit: 256
 
 volumes:
   control-plane-data:

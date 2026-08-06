@@ -156,7 +156,7 @@ must produce.
 python run.py sign        # re-sign after changing registry.py or tool_specs.json
 python run.py check-sign  # verify without re-signing
 python run.py doctor      # what is pinned, served, reachable
-python run.py verify      # all 134 tests
+python run.py verify      # all 160 tests
 aae lifecycle <id>        # the event trail, --json for everything
 aae evidence export --out ./evidence <proposal-id> ...
 ```
@@ -177,6 +177,24 @@ verification taken at export time — including when it fails. Two exports of
 one proposal differ in exactly one field (`manifest.exported_at`), so an outer
 file digest identifies *that export*, not the evidence. `"audit_chain_verified":
 null` means the chain could not be checked; it never means clean.
+
+## Deployment hardening
+
+Every container drops **all** capabilities, refuses privilege escalation, and
+carries a memory and PID ceiling. The two application containers run with a
+read-only root filesystem and a 64 MB tmpfs; the databases write only their
+data volumes. Published ports bind `127.0.0.1`, so nothing is on the network.
+`/metrics` requires a bearer token — `/v1/metrics` is the authenticated view,
+and `AAE_PUBLIC_METRICS=1` opts back in for a local scrape.
+
+None of this was true until a survey of the running containers found writable
+root filesystems, the full default capability set, no resource ceiling, ports
+on every interface, and an unauthenticated Prometheus endpoint — all inherited
+from an upstream pilot whose own comments said "local pilot only".
+
+*Checked by* `tests/e2e/test_hardening.py`, which asserts against
+`docker inspect` and live HTTP rather than against the compose file: what is
+running is the only thing that protects anyone.
 
 ## Upgrading the pinned core
 
