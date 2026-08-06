@@ -2,14 +2,20 @@
 
 Signing, rotation, evidence, and what to do when something does not verify.
 
+
+> The `aae` commands below live in the virtualenv that `python run.py up`
+> created. Either activate it — `.venv\Scripts\activate` on Windows,
+> `source .venv/bin/activate` elsewhere — or use `python -m aae.cli ...`,
+> which needs no activation.
+
 ## Signing the ToolSpec bundle
 
 ```bash
-make sign        # sign, and pin the digest into .env
-make check-sign  # verify the current bundle, sign nothing
+python run.py sign        # sign, and pin the digest into .env
+python run.py check-sign  # verify the current bundle, sign nothing
 ```
 
-`make sign` computes each `callable_digest` from the source of the function
+`python run.py sign` computes each `callable_digest` from the source of the function
 actually registered, and **refuses to sign** if a declared tool has no
 callable or a registered callable has no spec. Both directions matter: a
 registered tool with no spec runs unattested; a spec with no tool is an
@@ -74,13 +80,13 @@ aae evidence export --out ./evidence-before-rotation <proposal-id> ...
 ```
 
 Existing database volumes also keep the OLD passwords. After a rotation you
-need `make down` (which removes them) or the stack will not start.
+need `python run.py down` (which removes them) or the stack will not start.
 
 ## Evidence export
 
 ```bash
 aae evidence export --out ./evidence <proposal-id> ...
-aae scenarios --evidence-out ./evidence     # export what the scenarios produced
+python run.py scenarios --evidence-out ./evidence     # export what the scenarios produced
 ```
 
 The archive contains, per proposal, REMORA's bundle **exactly as returned**
@@ -143,13 +149,13 @@ must not treat "we could not look" as a failure of the action.
 ## Health and diagnosis
 
 ```bash
-aae doctor                      # pin, surfaces, reachability, reader credential
-make check-sign                 # the ToolSpec bundle
+python run.py doctor                      # pin, surfaces, reachability, reader credential
+python run.py check-sign                 # the ToolSpec bundle
 docker compose logs control-plane
 docker compose ps -a
 ```
 
-`aae doctor` checks the reader credential **as a reader** — it connects and
+`python run.py doctor` checks the reader credential **as a reader** — it connects and
 confirms it can read. A doctor that only proved connectivity would miss the
 property that matters.
 
@@ -172,8 +178,8 @@ gh release download <tag> -R darklordVirtual/REMORA-research \
 cp dist/core-release-manifest.json product/core-release-manifest.json
 # 3.
 python scripts/verify_core_pin.py --out dist
-make compat        # the lock and the manifest must agree field by field
-make up && make verify
+python run.py compat        # the lock and the manifest must agree field by field
+python run.py up && python run.py verify
 ```
 
 `tests/compatibility/test_pin_manifest_agreement.py` compares the hand-written

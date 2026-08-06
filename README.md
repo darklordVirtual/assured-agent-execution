@@ -24,17 +24,27 @@ core release).
 ```bash
 git clone https://github.com/darklordVirtual/assured-agent-execution
 cd assured-agent-execution
-make up          # verify the pin, generate secrets, sign, build, migrate, start
-make scenarios   # run the four decisions against what you just started
+python run.py up          # verify the pin, generate secrets, sign, build, migrate, start
+python run.py scenarios   # run the four decisions against what you just started
 ```
 
-There is nothing to fill in first. `make up` generates this installation's
-signing keys, database passwords and bearer tokens into `.env`, so no two
-installs share a credential — not even two developers on the same team.
+`make up` / `make scenarios` do the same thing — the Makefile delegates to
+`run.py`, so there is one implementation and it cannot drift from the
+documentation. `make` is not installed on a default Windows machine, which is
+why the commands above do not need it.
 
-Then open the console at <http://localhost:8089>.
+There is nothing to fill in first. `python run.py up` generates this
+installation's signing keys, database passwords and bearer tokens into `.env`,
+so no two installs share a credential — not even two developers on the same
+team. It also probes for free host ports rather than hardcoding 8080, and
+prints the URLs it chose:
 
-## What `make scenarios` proves
+```
+  API       http://localhost:8088
+  Console   http://localhost:8089
+```
+
+## What `python run.py scenarios` proves
 
 ```
 [PASS] ACCEPT: grounded read under signed WO-1201
@@ -69,7 +79,7 @@ approved change had actually happened.
 |---|---|
 | Risk classification lives in `tool_metadata.json`, hashed into REMORA's policy identity | A tool cannot classify itself, and relabelling one invalidates every execution lease issued before the relabel |
 | Work-order authority is resolved **server-side** from a file the deployment controls | The agent names which authority it acts under and can never assert that the authority exists or says what it claims |
-| ToolSpec bundle signed with a deployment key (`make sign`) | Argument schemas, allowed targets and credential scopes cannot be edited by the thing they constrain — and the **pinned digest** refuses a correctly-signed *older* bundle, because a signature proves authenticity, never currency |
+| ToolSpec bundle signed with a deployment key (`python run.py sign`) | Argument schemas, allowed targets and credential scopes cannot be edited by the thing they constrain — and the **pinned digest** refuses a correctly-signed *older* bundle, because a signature proves authenticity, never currency |
 | Approval is bound to the exact tool-call hash | Getting a yes for one payload and executing another — the realistic attack on human-in-the-loop, which is never "bypass the human" |
 | `operator` / `reviewer` / `domain_expert` / `senior_authority` / `viewer`, none of them `admin` | One credential that can both approve and execute makes every other control decorative |
 | The postcondition reader holds `SELECT` and nothing else | A verifier that could write the state it verifies is reporting on itself |
@@ -119,9 +129,9 @@ offer them — when that test fails, it is the signal to move the imports.
 ## Verify it yourself
 
 ```bash
-make verify      # pin + 71 contract tests + 55 end-to-end tests
-make check-sign  # verify the signed ToolSpec bundle without re-signing
-aae doctor       # what is pinned, what is served, what is reachable
+python run.py verify      # pin + 71 contract tests + 55 end-to-end tests
+python run.py check-sign  # verify the signed ToolSpec bundle without re-signing
+python run.py doctor       # what is pinned, what is served, what is reachable
 ```
 
 The end-to-end suite includes `tests/e2e/test_toolspec.py`, which takes the

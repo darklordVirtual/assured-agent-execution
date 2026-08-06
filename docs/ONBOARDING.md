@@ -9,12 +9,17 @@ fetch the pinned core release.
 
 ---
 
+> The `aae` commands below live in the virtualenv that `python run.py up`
+> created. Either activate it — `.venv\Scripts\activate` on Windows,
+> `source .venv/bin/activate` elsewhere — or use `python -m aae.cli ...`,
+> which needs no activation.
+
 ## 1 — Install (5 min)
 
 ```bash
 git clone https://github.com/darklordVirtual/assured-agent-execution
 cd assured-agent-execution
-make up
+python run.py up
 ```
 
 Watch for three lines. They are the install proving things about itself.
@@ -31,14 +36,14 @@ check twice, because the first gates the download and the second makes the
 image self-describing. The third is your schema, applied by a one-shot
 migration under an admin role, before the control plane was allowed to start.
 
-`make up` also wrote `.env` with this installation's own signing keys,
+`python run.py up` also wrote `.env` with this installation's own signing keys,
 database passwords and bearer tokens. Nothing is shared with any other
 install, and nothing is committed.
 
 ## 2 — Ask it what it is (1 min)
 
 ```bash
-aae doctor
+python run.py doctor
 ```
 
 ```
@@ -60,7 +65,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8088/v1/assess
 ## 3 — Watch the four decisions (5 min)
 
 ```bash
-make scenarios
+python run.py scenarios
 ```
 
 Read the VERIFY block line by line. It is the entire product:
@@ -116,7 +121,8 @@ aae approve <review_item_id>
 # {"status": "approved", "approved_as": "reviewer", ...}
 
 # now execute a DIFFERENT work order under that approval
-aae execute <review_item_id> set_work_order_priority \n    wo_id=WO-1201 priority=high --intent WO-1203
+aae execute <review_item_id> set_work_order_priority \
+    wo_id=WO-1201 priority=high --intent WO-1203
 ```
 
 ```json
@@ -160,17 +166,17 @@ next(s for s in d["tool_specs"] if s["tool_id"] == "read_work_order") \
 p.write_text(json.dumps(d, indent=2))
 EOF
 
-make check-sign
+python run.py check-sign
 # BUNDLE REFUSED: toolspec_signature_invalid: the bundle signature does not
 # verify; its content changed after signing
 
-make sign        # restore
+python run.py sign        # restore
 ```
 
 **Run the whole attack suite.**
 
 ```bash
-make verify
+python run.py verify
 ```
 
 126 tests. `tests/e2e/test_toolspec.py` takes the bundle this deployment
@@ -192,7 +198,7 @@ that no longer verifies.
 ## 7 — Export evidence (2 min)
 
 ```bash
-aae scenarios --evidence-out ./evidence
+python run.py scenarios --evidence-out ./evidence
 cat evidence/manifest.json
 ```
 
@@ -210,13 +216,13 @@ means clean.
 
 | You want to… | Edit |
 |---|---|
-| Govern different tools | `toolpacks/work_order/registry.py` (callables), then `bundle.py` (what they mean), then `tool_specs.json`, then `make sign` |
+| Govern different tools | `toolpacks/work_order/registry.py` (callables), then `bundle.py` (what they mean), then `tool_specs.json`, then `python run.py sign` |
 | Change a tool's risk tier | `toolpacks/work_order/tool_metadata.json`. This is a **policy change**: it moves REMORA's policy bundle hash and invalidates every outstanding execution lease |
 | Issue a work order | `toolpacks/work_order/work_orders.json`. The whole file is hashed into every decision, so editing one entry is visible on every proposal in flight |
 | Point at a real system of record | `toolpacks/work_order/store.py` and `db/workorders/002_roles.sql` — keep the two roles; the reader must not be able to write |
 | Verify an effect for a new tool | `src/aae/postcondition.py`. A tool without an entry reports `EFFECT_UNSUPPORTED`, recorded — never silently "verified" |
 
-After any change to `registry.py` or `tool_specs.json`, run `make sign`:
+After any change to `registry.py` or `tool_specs.json`, run `python run.py sign`:
 signing recomputes each `callable_digest` from the deployed source and refuses
 if a declared tool has no callable, or a registered callable has no spec.
 

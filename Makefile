@@ -1,91 +1,71 @@
 # Assured Agent Execution
 #
-#   make up          verify the pin, build, migrate, start, wait healthy
-#   make scenarios   run the four decisions end to end against the running stack
-#   make verify      pin + compatibility + e2e
-#   make down        stop and remove everything, including volumes
+# Every target delegates to run.py, so there is exactly one implementation.
+# That is not tidiness: a shell version and a Python version drift, and the
+# first person to notice is a new developer following a walkthrough that no
+# longer matches what runs.
 #
-# Every target that touches the core verifies the pin first. A pin nobody
-# checks is a comment, not a control.
+# `make` is not installed on a default Windows machine. If you do not have it:
+#
+#     python run.py up
+#     python run.py scenarios
+#
+# is the same thing, and is what the documentation uses.
 
-SHELL := /bin/sh
-COMPOSE := docker compose
 PY ?= python
-VENV := .venv
-VENV_PY := $(VENV)/bin/python
-ifeq ($(OS),Windows_NT)
-VENV_PY := $(VENV)/Scripts/python.exe
-endif
 
 .DEFAULT_GOAL := help
-.PHONY: help pin env sign build up down logs ps verify compat e2e scenarios doctor clean
+.PHONY: help up down build pin env deps sign check-sign verify compat e2e \
+        scenarios doctor logs ps clean
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
+up:  ## Verify the pin, generate secrets, sign, build, migrate, start
+	$(PY) run.py up
+
+down:  ## Stop everything and remove the volumes
+	$(PY) run.py down
+
+build:  ## Build both images from the verified wheel
+	$(PY) run.py build
+
 pin:  ## Download and hash-verify the pinned REMORA core artifacts
-	$(PY) scripts/verify_core_pin.py --out dist
+	$(PY) run.py pin
 
-env:  ## Generate this installation's secrets into .env (never overwrites)
-	@$(PY) scripts/bootstrap_env.py
+env:  ## Generate this installation's secrets (never overwrites)
+	$(PY) run.py env
 
-$(VENV_PY):
-	$(PY) -m venv $(VENV)
+deps:  ## Create the venv and install the SDK from the verified wheel
+	$(PY) run.py deps
 
-deps: $(VENV_PY) pin  ## Install the SDK from the verified wheel, plus test deps
-	$(VENV_PY) -m pip install --quiet --upgrade pip
-	$(VENV_PY) -m pip install --quiet pytest "psycopg[binary]" \
-	  "$$(ls dist/remora-*.whl)[sdk]"
+sign:  ## Sign the ToolSpec bundle and pin its digest into .env
+	$(PY) run.py sign
 
-sign: deps  ## Sign the ToolSpec bundle and pin its digest into .env
-	$(VENV_PY) scripts/sign_toolpack.py --pin-into .env
+check-sign:  ## Verify the signed bundle without re-signing it
+	$(PY) run.py check-sign
 
-check-sign: deps  ## Verify the signed bundle without re-signing it
-	$(VENV_PY) scripts/sign_toolpack.py --check
+verify:  ## Everything: pin, contract tests, end-to-end tests
+	$(PY) run.py verify
 
-build: pin  ## Build the control-plane image from the verified wheel
-	$(COMPOSE) build
+compat:  ## Pinned-core contract tests (no Docker needed)
+	$(PY) run.py compat
 
-up: env sign build  ## Sign, build and bring the whole stack up
-	$(COMPOSE) up -d
-	@echo "waiting for the control plane to report healthy..."
-	@i=0; until [ "$$($(COMPOSE) ps --format '{{.Health}}' control-plane)" = "healthy" ]; do \
-	  i=$$((i+1)); \
-	  if [ $$i -gt 60 ]; then \
-	    echo "control plane did not become healthy; last 40 lines:"; \
-	    $(COMPOSE) logs --tail 40 control-plane; exit 1; \
-	  fi; sleep 2; \
-	done
-	@echo ""
-	@echo "  Assured Agent Execution is up."
-	@echo "  API      http://localhost:$${AAE_API_PORT:-8080}"
-	@echo "  OpenAPI  http://localhost:$${AAE_API_PORT:-8080}/openapi.json"
-	@echo ""
-	@echo "  next:  make scenarios"
+e2e:  ## End-to-end tests against the running stack
+	$(PY) run.py e2e
 
-down:  ## Stop everything and remove volumes
-	$(COMPOSE) down -v
+scenarios:  ## Run the four decisions against the running stack
+	$(PY) run.py scenarios
+
+doctor:  ## What is pinned, what is served, what is reachable
+	$(PY) run.py doctor
 
 logs:  ## Follow the control plane log
-	$(COMPOSE) logs -f control-plane
+	$(PY) run.py logs
 
 ps:  ## Show what is running
-	$(COMPOSE) ps
-
-compat: deps  ## Pinned-core contract tests (no Docker needed)
-	$(VENV_PY) -m pytest tests/compatibility -q
-
-e2e: deps  ## End-to-end tests against the running stack
-	$(VENV_PY) -m pytest tests/e2e -q
-
-verify: compat e2e  ## Everything: pin, contract, end to end
-
-scenarios: deps  ## Run ACCEPT, VERIFY, ABSTAIN and ESCALATE against the stack
-	$(VENV_PY) -m aae.cli scenarios
-
-doctor: deps  ## What is running, which core is pinned, what is configured
-	$(VENV_PY) -m aae.cli doctor
+	$(PY) run.py ps
 
 clean:  ## Remove the venv and downloaded artifacts (keeps .env)
-	rm -rf $(VENV) dist .pytest_cache
+	$(PY) run.py clean

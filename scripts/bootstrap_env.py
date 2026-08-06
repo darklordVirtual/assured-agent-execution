@@ -62,9 +62,42 @@ def _generate() -> str:
     lines = [_HEADER]
     for name, (entropy, comment) in _SECRETS.items():
         lines.append(f"\n# {comment}\n{name}={secrets.token_urlsafe(entropy)}")
-    lines.append("\n\n# Host port for the control plane API.\nAAE_API_PORT=8080\n")
+    api_port = _free_port(8088)
+    console_port = _free_port(api_port + 1)
+    wo_port = _free_port(55432)
+    lines.append(
+        "\n\n# Host ports, chosen at generation time by probing for a free\n"
+        "# one. A fixed default collides with whatever else the developer\n"
+        "# happens to be running, and 'port is already allocated' is a poor\n"
+        "# first experience of a product whose pitch is one-command install.\n"
+        f"AAE_API_PORT={api_port}\n"
+        f"AAE_CONSOLE_PORT={console_port}\n"
+        f"AAE_WORKORDER_DB_PORT={wo_port}\n")
     return "".join(lines)
 
+
+
+
+def _free_port(start: int, attempts: int = 40) -> int:
+    """First free port at or after ``start``.
+
+    Probes by binding, which is the only answer that is true at the moment it
+    is given. A port can still be taken between here and `docker compose up`,
+    but that race is far narrower than a hardcoded default that is already
+    wrong for everyone running something on 8080.
+    """
+    import socket
+
+    for offset in range(attempts):
+        candidate = start + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind(("127.0.0.1", candidate))
+                return candidate
+            except OSError:
+                continue
+    return start
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

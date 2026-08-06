@@ -117,7 +117,7 @@ services:
       control-plane-db: {condition: service_healthy}
       workorder-migrate: {condition: service_completed_successfully}
     ports:
-      - "${AAE_API_PORT:-8080}:8000"
+      - "${AAE_API_PORT:-8088}:8000"
     environment:
       REMORA_ENV: production
       REMORA_ENABLED_SURFACES: execution

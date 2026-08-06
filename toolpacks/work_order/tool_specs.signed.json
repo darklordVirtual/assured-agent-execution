@@ -3,8 +3,8 @@
   "_comment": "UNSIGNED source for this deployment's ToolSpec bundle. Never loaded at runtime — scripts/sign_toolpack.py computes each callable_digest from the function actually registered, signs the result with the deployment's key, and writes tool_specs.signed.json, which is what the control plane loads. A ToolSpec is the authority to call a tool: its argument schema, the environments it may touch, the credentials it may use, whether its effect can be read back. One signed spec replaces four sources that could previously disagree — the static registry metadata, the callable registry, the semantic contract, and the client-asserted schema_valid flag.",
   "registry_signature": {
     "algorithm": "HMAC-SHA256",
-    "signature": "e49c9531850b3a1e1176259bf07a7fcb9084d9852038104f40e2c95e163dac94",
-    "signed_at": "2026-08-06T00:07:20+00:00",
+    "signature": "a548b0b97bb626dda29ac0038e60cb2179f31665a6038b32c08c8556db888629",
+    "signed_at": "2026-08-06T00:20:25+00:00",
     "signing_identity": "aae.work_order_signer/v1"
   },
   "schema_version": 1,

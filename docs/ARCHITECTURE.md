@@ -116,7 +116,7 @@ this deployment controls.
 
 **`tool_specs.signed.json` — the authority.** Argument schema, allowed
 targets, credential scope, whether the effect can be read back. Signed by the
-deployment via `make sign`, which computes each `callable_digest` from the
+deployment via `python run.py sign`, which computes each `callable_digest` from the
 source of the function actually registered and refuses to sign if a declared
 tool has no callable or a registered callable has no spec.
 
