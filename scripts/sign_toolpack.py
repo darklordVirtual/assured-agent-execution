@@ -147,7 +147,18 @@ def load_key() -> str:
     return key
 
 
+def _utf8() -> None:
+    """UTF-8 output, from the one shared implementation."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "src"))
+    from aae._io import force_utf8_output
+
+    force_utf8_output()
+
+
 def main() -> int:
+    _utf8()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
                         help="verify the existing signed bundle, sign nothing")

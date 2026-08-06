@@ -101,7 +101,7 @@ def work_orders() -> JSONResponse:
         from psycopg.rows import dict_row
 
         with psycopg.connect(READER_DSN, row_factory=dict_row,
-                             connect_timeout=5) as conn:
+                             connect_timeout=5, autocommit=True) as conn:
             conn.read_only = True
             with conn.cursor() as cur:
                 cur.execute(

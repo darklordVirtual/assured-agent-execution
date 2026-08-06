@@ -126,7 +126,8 @@ def observe(dsn: str, spec: PostconditionSpec) -> Observation:
         return Observation(fields=None, looked=True,
                            detail="the postcondition names no target work order")
     try:
-        with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10) as conn:
+        with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10,
+                             autocommit=True) as conn:
             # Belt to the grants' braces. If this process is ever handed a DSN
             # with more rights than it should have, the transaction still
             # refuses to write.

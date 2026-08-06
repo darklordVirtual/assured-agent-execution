@@ -82,7 +82,8 @@ def reader_conn(live: Config):
     import psycopg
 
     try:
-        with psycopg.connect(live.reader_dsn, connect_timeout=5) as conn:
+        with psycopg.connect(live.reader_dsn, connect_timeout=5,
+                             autocommit=True) as conn:
             conn.read_only = True
             yield conn
     except psycopg.Error as exc:

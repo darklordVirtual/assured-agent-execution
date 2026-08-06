@@ -105,7 +105,7 @@ the approval is welded to, and its position in the tamper-evident chain.
 `aae` lives in the venv `run.py up` created; `python -m aae.cli` works without
 activating it.
 
-`python run.py verify` runs all 160 tests. Among them,
+`python run.py verify` runs all 168 tests. Among them,
 `tests/e2e/test_toolspec.py` attacks the bundle this deployment is actually
 running — six tamper shapes, a revoked signer, and a correctly-signed *older*
 bundle. Every signature check passes on that last one, because it really was
@@ -122,6 +122,7 @@ signed here. Only the pinned digest refuses it.
 | Five roles, none of them `admin` | One credential that can both approve and execute makes every other control decorative |
 | The effect reader holds `SELECT` and nothing else | A verifier that could write the state it verifies is reporting on itself |
 | Containers drop **all** capabilities, run read-only, refuse privilege escalation, and publish on loopback only | A compromise that cannot persist across a restart, cannot escalate, and was never on the LAN to begin with |
+| Backups carry both databases and the signed bundle — and **never** the signing keys | An archive holding the chain *and* the key that signs it lets its holder forge a history that verifies perfectly |
 | `UNOBSERVABLE` and `VERIFIER_FAILED` are non-terminal; only `MISMATCH` is | "We could not look" is not "it was wrong" — one closes incidents that are still open, the other opens incidents for actions that succeeded |
 
 [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) explains the design, and names the

@@ -156,7 +156,7 @@ must produce.
 python run.py sign        # re-sign after changing registry.py or tool_specs.json
 python run.py check-sign  # verify without re-signing
 python run.py doctor      # what is pinned, served, reachable
-python run.py verify      # all 160 tests
+python run.py verify      # all 168 tests
 aae lifecycle <id>        # the event trail, --json for everything
 aae evidence export --out ./evidence <proposal-id> ...
 ```
@@ -195,6 +195,37 @@ from an upstream pilot whose own comments said "local pilot only".
 *Checked by* `tests/e2e/test_hardening.py`, which asserts against
 `docker inspect` and live HTTP rather than against the compose file: what is
 running is the only thing that protects anyone.
+
+## Backup and restore
+
+```bash
+python run.py backup --out ./backups/2026-08-06
+python run.py restore --source ./backups/2026-08-06
+```
+
+Both databases and the signed ToolSpec bundle, with a manifest hashing all of
+it. The restore verifies every digest **before** applying anything: restoring
+a corrupted dump into a live deployment turns a detectable problem into a
+silent one.
+
+**Signing keys are deliberately not in the archive.** An archive holding both
+the audit chain and the key that signs it lets whoever has it forge a history
+that verifies perfectly. Keep the keys in a secret manager. If a restore lands
+without them the chain will not verify — that is the archive telling you the
+truth, not a restore failure.
+
+The test that makes this worth having destroys governance state, restores, and
+asks REMORA — not this product — whether the chain is intact. A chain that
+verifies after a round trip was not tampered with in between.
+
+`pg_dump` takes an ACCESS SHARE lock on every table, so one session left
+idle-in-transaction blocks it forever. The backup sets `lock_timeout` and a
+wall clock, and names what to look at when it trips: a backup that hangs in
+silence is worse than one that fails, because a scheduled job never reports
+and nobody finds out until the restore. Every read-only connection in this
+product is `autocommit` for the same reason.
+
+*Checked by* `tests/e2e/test_backup_restore.py`.
 
 ## Upgrading the pinned core
 

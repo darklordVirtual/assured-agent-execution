@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from aae._io import force_utf8_output
 from aae.config import Config, ConfigError
 from aae.evidence import plain
 
@@ -92,7 +93,8 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     # not be able to write. A doctor that only proved connectivity would miss
     # the property that matters.
     try:
-        with psycopg.connect(cfg.reader_dsn, connect_timeout=5) as conn:
+        with psycopg.connect(cfg.reader_dsn, connect_timeout=5,
+                             autocommit=True) as conn:
             conn.read_only = True
             with conn.cursor() as cur:
                 cur.execute("SELECT count(*) FROM work_orders")
@@ -385,30 +387,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _force_utf8_output() -> None:
-    """Print UTF-8 regardless of the console's default codepage.
-
-    A Windows console defaults to cp1252, which cannot encode the arrows and
-    box characters in the scenario report. Without this, `aae scenarios`
-    crashes with UnicodeEncodeError *after* running the scenarios — so the
-    work happened, the governance decisions were recorded, and the operator
-    sees a stack trace instead of the result.
-
-    ``errors="replace"`` rather than a strict encoder: a character we cannot
-    render must degrade to a placeholder, never take down a command whose real
-    output is the decisions it just reported.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is not None:
-            try:
-                reconfigure(encoding="utf-8", errors="replace")
-            except (OSError, ValueError):
-                pass  # a redirected or already-wrapped stream; not fatal
-
-
 def main(argv: list[str] | None = None) -> int:
-    _force_utf8_output()
+    force_utf8_output()
     args = build_parser().parse_args(argv)
     try:
         cfg = Config.from_env()

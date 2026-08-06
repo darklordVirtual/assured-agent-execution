@@ -200,6 +200,23 @@ def t_doctor(_args) -> None:
     run([str(VENV_PY), "-m", "aae.cli", "doctor"], check=False)
 
 
+def t_backup(args) -> None:
+    """Dump both databases and the signed bundle to a verifiable archive."""
+    _ensure_deps()
+    out = getattr(args, "out", None) or "./backups/latest"
+    run([str(VENV_PY), "scripts/backup.py", "backup", "--out", out])
+
+
+def t_restore(args) -> None:
+    """Restore an archive, after verifying it is what its manifest says."""
+    _ensure_deps()
+    source = getattr(args, "source", None)
+    if not source:
+        raise SystemExit("restore needs a directory: "
+                         "python run.py restore --source ./backups/...")
+    run([str(VENV_PY), "scripts/backup.py", "restore", source])
+
+
 def t_clean(_args) -> None:
     """Remove the venv and downloaded artifacts. Keeps .env."""
     for path in (VENV, ROOT / "dist", ROOT / ".pytest_cache"):
@@ -212,7 +229,7 @@ TARGETS = {
     "deps": t_deps, "sign": t_sign, "check-sign": t_check_sign,
     "verify": t_verify, "compat": t_compat, "e2e": t_e2e,
     "scenarios": t_scenarios, "doctor": t_doctor, "logs": t_logs, "ps": t_ps,
-    "clean": t_clean,
+    "backup": t_backup, "restore": t_restore, "clean": t_clean,
 }
 
 
@@ -224,6 +241,8 @@ def main() -> int:
                         help="what to do")
     parser.add_argument("--evidence-out",
                         help="scenarios: also export evidence to this directory")
+    parser.add_argument("--out", help="backup: where to write the archive")
+    parser.add_argument("--source", help="restore: the archive to restore")
     args = parser.parse_args()
     TARGETS[args.target](args)
     return 0
