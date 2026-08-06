@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ EXIT_OK = 0
 EXIT_FAILED = 1        # the system answered, and the answer is a failure
 EXIT_UNAVAILABLE = 2   # we could not reach it — kept distinct on purpose
 EXIT_CONFIG = 78
+EXIT_MISMATCH = 3      # the benchmark ran; a decision disagreed with its case
 
 
 def _kv(pairs: list[str]) -> dict[str, Any]:
@@ -105,9 +107,120 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
         print(f"  system of record  UNREACHABLE — {exc}".strip())
         ok = False
 
+    # Core schema provenance. Runs inside the control-plane container, because
+    # the core database sits on an internal network that nothing on the host
+    # can reach. `sh -c` so the DSN is read from the container's own
+    # environment — it holds a password, and passing it from here would put it
+    # in this machine's process list.
+    probe = subprocess.run(
+        ["docker", "compose", "exec", "-T", "control-plane", "sh", "-c",
+         'python /app/core_schema.py --dsn "$REMORA_CONTROL_PLANE_DSN" '
+         '--lock /app/product/core-artifact-lock.json'],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True, text=True)
+    try:
+        state = json.loads((probe.stdout.strip().splitlines() or [""])[-1])
+    except json.JSONDecodeError:
+        print("  core schema       not checked — control plane not running")
+    else:
+        if state["ok"]:
+            print(f"  core schema       initialised by "
+                  f"{state['recorded_release']}, matches the pin")
+        else:
+            # Advisory: nobody has established the schema is right, which is
+            # not the same as knowing it is wrong.
+            print("  core schema       NEEDS ATTENTION")
+            for concern in state["concerns"]:
+                print(f"                    {concern}")
+            ok = False
+
     if not ok:
         print("\n  not healthy. try: python run.py up")
     return EXIT_OK if ok else EXIT_UNAVAILABLE
+
+
+# ── benchmark ──────────────────────────────────────────────────────────────
+
+def cmd_bench(cfg: Config, args: argparse.Namespace) -> int:
+    from aae import benchmark
+
+    if args.list:
+        print("\n  Available scenarios\n")
+        for suite in benchmark.load_suites():
+            print(f"    {suite['suite']}  —  {suite.get('title', '')}")
+            for case in suite["cases"]:
+                print(f"      {case['probes']:<18} {case['id']}")
+            print()
+        print("  Run a subset:  python run.py bench --suite NAME "
+              "--layer LAYER --case ID\n")
+        return EXIT_OK
+
+    if args.verify_trail:
+        report = json.loads(Path(args.verify_trail).read_text(encoding="utf-8"))
+        with _client(cfg, "viewer") as viewer:
+            check = benchmark.verify_trail(viewer, report)
+        print(f"\n  Audit trail of {args.verify_trail}\n")
+        print(f"    chain              "
+              f"{'verified' if check.get('chain_valid') else 'NOT VERIFIED'}"
+              f" ({check.get('chain_records')} records)")
+        print(f"    entries checked    {check['checked']}")
+        for problem in check.get("mismatches", []):
+            print(f"    MISMATCH  {problem}")
+        if check.get("problem"):
+            print(f"    {check['problem']}")
+        verdict = ("The report matches the chain." if check["verified"]
+                   else "The report does NOT match the chain.")
+        print(f"\n  {verdict}\n")
+        return EXIT_OK if check["verified"] else EXIT_FAILED
+
+    # Every role, because the role-separation scenarios can only observe a
+    # refusal by actually attempting the act with the wrong identity.
+    from contextlib import ExitStack
+
+    from remora.sdk import RemoraClient
+
+    selection = benchmark.Selection(
+        suites=tuple(args.suite or ()),
+        layers=tuple(args.layer or ()),
+        cases=tuple(args.case or ()),
+    )
+    with ExitStack() as stack:
+        clients = {
+            role: stack.enter_context(RemoraClient(cfg.api_url, token))
+            for role, token in (
+                ("operator", cfg.token_agent),
+                ("viewer", cfg.token_viewer),
+                *cfg.approver_tokens.items(),
+            )
+        }
+        run = benchmark.predict(clients, only=selection)
+
+    # A genuinely blind pass: predictions out, no key opened. Scoring is a
+    # separate act someone else can perform.
+    if getattr(args, "predict_only", False):
+        out = Path(args.out or "benchmarks/predictions.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(run, indent=2), encoding="utf-8")
+        print(f"  {len(run['predictions'])} prediction(s) written to {out}")
+        print("  no answer key was opened")
+        return EXIT_OK
+
+    report = benchmark.score(run)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(benchmark.format_report(report))
+
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"  report written to {out}")
+
+    # A known gap behaving as documented is not a failing run. Only a
+    # disagreement nothing accounts for fails.
+    return EXIT_OK if report["regressions"] == 0 else EXIT_MISMATCH
 
 
 # ── scenarios ──────────────────────────────────────────────────────────────
@@ -332,6 +445,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="what is running and configured")
     doctor.set_defaults(func=cmd_doctor)
+
+    bench = sub.add_parser(
+        "bench", help="score declared tool calls against the deployment")
+    bench.add_argument("--suite", action="append",
+                       help="run this suite; repeatable, default is all")
+    bench.add_argument("--layer", action="append",
+                       help="run only scenarios probing this layer; repeatable")
+    bench.add_argument("--case", action="append",
+                       help="run one scenario by id or suite/id; repeatable")
+    bench.add_argument("--verify-trail", metavar="REPORT",
+                       help="re-read a saved report's audit trail from the "
+                            "chain and confirm it")
+    bench.add_argument("--list", action="store_true",
+                       help="show what could be run, and run nothing")
+    bench.add_argument("--out", default=None,
+                       help="also write the JSON report here")
+    bench.add_argument("--json", action="store_true",
+                       help="print the report as JSON instead of a scorecard")
+    bench.add_argument("--predict-only", action="store_true",
+                       help="run the scenarios and write predictions without "
+                            "opening any answer key")
+    bench.set_defaults(func=cmd_bench)
 
     scen = sub.add_parser("scenarios", help="run the four decisions end to end")
     scen.add_argument("--evidence-out", help="also export evidence to this directory")

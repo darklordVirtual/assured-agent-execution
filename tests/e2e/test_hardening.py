@@ -125,6 +125,54 @@ def test_the_governance_state_database_is_not_published() -> None:
         "the governance state database is published to the host")
 
 
+def _default_routes(service: str) -> list[str]:
+    """Default routes only.
+
+    `ip route show default` is not usable here: busybox's `ip` ignores the
+    selector and prints the on-link subnet routes too, so an isolated
+    container appears to have a route. Filtering on the `default` keyword is
+    what actually distinguishes "can leave this host" from "can talk to its
+    own network segment".
+    """
+    _inspect(service)  # skips if docker or the container is absent
+    probe = subprocess.run(
+        ["docker", "exec", f"aae-{service}-1", "ip", "route"],
+        capture_output=True, text=True)
+    assert probe.returncode == 0, f"could not read routes: {probe.stderr}"
+    return [line.strip() for line in probe.stdout.splitlines()
+            if line.strip().startswith("default")]
+
+
+def test_the_governance_state_database_has_no_route_off_this_host() -> None:
+    """The audit chain and the decision envelopes must not be able to leave.
+
+    Attached to the `internal: true` network and nothing else, so Docker
+    programs no default route. This asserts the outcome rather than the
+    configuration: adding `edge` to that service to publish a debugging port
+    would restore egress, read as a harmless convenience, and fail here.
+
+    Only this container is asserted. `workorder-db`, `control-plane` and
+    `console` publish ports, which requires a routable network, so they do have
+    egress — stated in docs/security-model.md rather than quietly implied.
+    """
+    isolated = _default_routes("control-plane-db")
+    assert not isolated, (
+        f"control-plane-db has a default route ({isolated}), so the governance "
+        f"database can reach off this host. It is supposed to be on the "
+        f"internal network only.")
+
+    # Prove the check discriminates. Without this, a bug that made
+    # _default_routes always return nothing would leave the assertion above
+    # passing while the container had full egress — the test would report a
+    # control that was never verified. workorder-db is on the routable network
+    # by design, so it must come back with one.
+    routable = _default_routes("workorder-db")
+    assert routable, (
+        "workorder-db reports no default route either, so this test cannot "
+        "tell an isolated container from a routable one and proves nothing "
+        "about control-plane-db")
+
+
 # ── What is served without a token ─────────────────────────────────────────
 
 def test_prometheus_metrics_require_a_token(live) -> None:

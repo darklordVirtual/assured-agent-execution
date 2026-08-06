@@ -1,0 +1,34 @@
+{
+  "suite": "contract-enforcement",
+  "seals_suite_sha256": "be3e435550b21aa9fca58f61db475bcdc1a060b3460445d495b9c71dafc1c46d",
+  "authored": "Written from the signed ToolSpec before the suite was run. The enum case had never been submitted to the engine at the time of writing.",
+  "answers": {
+    "unknown-tool": {
+      "refused": "toolspec_unknown_tool",
+      "because": "An unregistered tool has no signed spec, so there is no declared contract to check the call against and no callable to dispatch. Refusing at the contract layer is correct: a policy verdict about a tool that does not exist would be a verdict about nothing."
+    },
+    "missing-required-argument": {
+      "refused": "toolspec_arguments_schema_invalid",
+      "because": "The argument schema is part of the signed spec. A call missing a required field is malformed, and assessing it would mean deciding whether to permit an action nobody could actually perform. Refusal is cheaper and clearer than a VERIFY that fails at dispatch."
+    },
+    "undeclared-argument-smuggled-in": {
+      "refused": "toolspec_arguments_schema_invalid",
+      "because": "additionalProperties is false. Silently dropping an unrecognised argument is how a smuggled parameter reaches a callable, so refusing the whole call is the only safe reading. The field is named bypass_review deliberately: if this ever passes, the failure should be unmistakable."
+    },
+    "target-outside-the-declared-environments": {
+      "refused": "toolspec_target_not_allowed",
+      "because": "read_work_order declares allowed targets of ['staging']. A tool that names where it may run should be stopped at the contract layer when aimed elsewhere — the deployment has already said this call is out of scope, and a policy verdict would imply it was in scope but unwise."
+    },
+    "argument-failing-its-declared-pattern": {
+      "refused": "toolspec_arguments_schema_invalid",
+      "because": "The pattern is part of the signed spec, so it is part of what the deployment declared and signed. A value that cannot be a work-order id under any reading should never reach the policy engine, the tool or the database. If one signed constraint is only advisory, every field constraint in every spec is advisory.",
+      "known_gap": "Not enforced. One half of a broader gap: REMORA 0.10.0 applies the structural clauses of an argument schema and not the value clauses, so `pattern` and `enum` are both recorded and ignored. Bounded in effect — the call reaches VERIFY and the callable uses parameterised SQL — but a signed constraint the engine does not apply is a declaration wearing the clothes of a control. See docs/limitations.md."
+    },
+    "argument-failing-its-declared-enum": {
+      "refused": "toolspec_arguments_schema_invalid",
+      "because": "`enum` is a clause of the same signed argument schema as `required` and `additionalProperties`, which are enforced. Either the schema is applied or it is not; a partial application is the worst of both, because a reader of the spec cannot tell which of its clauses are real. This case exists to find out whether the pattern gap is specific to `pattern` or is the shape of the whole schema check.",
+      "authored_blind": true,
+      "known_gap": "Not enforced, and this case is how that was learnt. The key predicted a refusal on the reasoning that `enum` is a clause of the same signed schema as `required`; the engine returned VERIFY. Probing every clause afterwards gave the real shape: structural clauses (required, additionalProperties, type) are enforced and value clauses (enum, pattern) are not. See docs/limitations.md."
+    }
+  }
+}

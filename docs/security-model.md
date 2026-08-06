@@ -20,7 +20,9 @@ checks is a comment; a declaration presented as a control is worse.
 | Nothing is published beyond loopback | `127.0.0.1` port bindings | `test_published_ports_bind_loopback_only` |
 | The pinned core is what it claims | seven SHA-256 digests | `verify_core_pin.py`, refuses on mismatch |
 | The console cannot act | one `viewer` token, no mutating route, no REMORA package in its image | `test_console.py` |
+| The console cannot alter the record it displays | both its database credentials are `GRANT SELECT` only | `test_the_console_reads_the_chain_on_a_credential_that_cannot_write` |
 | The console page loads nothing third-party | `Content-Security-Policy: default-src 'self'`, and every asset self-hosted | `test_console_ui.py` |
+| No state is signalled by colour alone | every coloured element also names its state | `test_no_state_is_carried_by_colour_alone` |
 | Console failures disclose no internals | a sentence and a correlation id; exception text goes to the log | `test_a_failure_never_returns_exception_text` |
 
 ## Declared, not enforced
@@ -29,10 +31,28 @@ These are statements a call can be checked *against*. Nothing in this
 deployment makes them true.
 
 **`network_policy: {"egress": "none"}`** in a ToolSpec declares that a tool
-*requires* no outbound network. The compose profile does not use an internal
-network or an egress firewall. The reference tools genuinely need none, so the
-declaration is accurate — but it is not a network control, and a tool that
-started making outbound calls would not be stopped by it.
+*requires* no outbound network. It is a statement about the tool, and REMORA
+never turns it into a network control — a tool that started making outbound
+calls would not be stopped by this field.
+
+The deployment enforces what it can, and the boundary is drawn by which
+container publishes a port. `docker-compose.yml` defines an `internal: true`
+network with no route off the host:
+
+| Container | Egress | Why |
+|---|---|---|
+| `control-plane-db` | **none** | internal network only |
+| `workorder-db` | open | publishes a loopback port for the read-only reader |
+| `control-plane` | open | publishes the API |
+| `console` | open | publishes the console |
+
+The audit chain and the decision envelopes are in `control-plane-db`, so the
+data that governance depends on is isolated by Docker rather than by a
+declaration — verified by `ip route`, and asserted in
+`tests/e2e/test_hardening.py` so re-attaching it to a routable network fails a
+test. The other three keep egress because a published port requires a routable
+network. Closing those needs an egress firewall or a deny-by-default proxy,
+which this profile does not ship.
 
 **`credential_scope`** declares which scopes a tool may use. REMORA refuses a
 dispatch requesting more than the spec allows; it does not attest that the

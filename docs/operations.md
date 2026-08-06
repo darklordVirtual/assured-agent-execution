@@ -140,16 +140,5 @@ python run.py reset      # stop AND destroy the volumes, chain included
 
 ## Upgrading the pinned core
 
-```bash
-# edit product/core-artifact-lock.json: tag, commit, wheel digest
-gh release download <tag> -R darklordVirtual/REMORA-research \
-   -D dist -p core-release-manifest.json --clobber
-cp dist/core-release-manifest.json product/core-release-manifest.json
-python scripts/verify_core_pin.py --out dist
-python run.py check      # the lock and manifest must agree field by field
-python run.py up && python run.py verify
-```
-
-`test_pin_manifest_agreement.py` compares the hand-written lock against the
-release-generated manifest and runs on JSON only, so a disagreement fails
-before anything is downloaded or built.
+The procedure, the current values and what each check protects against are in
+[The pinned core](pinned-core.md#upgrading).

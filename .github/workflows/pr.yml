@@ -13,6 +13,11 @@ name: PR — pinned core, contract, and the running vertical
 # that could also execute, a refusal that arrives as an outcome rather than an
 # exception, a CRLF entrypoint, a hardcoded port, a runner module shadowing
 # the package it was meant to run.
+#
+# It also scores the governance benchmark and checks the resulting report
+# against the audit chain. Those two steps were absent for a day: every test
+# here proves the product RUNS, and none of them proved it DECIDES correctly,
+# so a policy regression would have shipped green.
 
 on:
   pull_request:
@@ -75,6 +80,28 @@ jobs:
         # AAE_REQUIRE_LIVE is set by run.py: a skipped suite fails here
         # rather than reporting green for tests that never ran.
         run: python run.py e2e
+
+      - name: Score the decisions against the sealed answer key
+        # The only gate that checks what the engine DECIDES rather than
+        # whether the product runs. It scores every scenario blind — the run
+        # opens no key — and fails on a regression, meaning a disagreement no
+        # documented limitation accounts for. Known gaps stay green so the
+        # gate does not become permanently red and therefore ignored.
+        run: python run.py bench
+
+      - name: The report matches the audit chain
+        # A score is the harness's word for what it did until this passes. It
+        # re-reads every chain position the run recorded and confirms the
+        # hashes; a fabricated report produces a byte-identical file and fails
+        # here.
+        run: python run.py bench-verify
+
+      - name: Publish the benchmark report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: benchmark-report
+          path: benchmarks/report.json
+          if-no-files-found: error
 
       - name: The signed ToolSpec bundle still verifies
         run: python run.py check-sign

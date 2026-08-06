@@ -5,9 +5,13 @@
 
     python run.py up          verify the pin, generate secrets, sign, build,
                               migrate, start, and wait until healthy
-    python run.py scenarios   run the four decisions against the running stack
-    python run.py verify      pin + contract tests + end-to-end tests
-    python run.py down        stop everything and remove the volumes
+    python run.py scenarios   run the six decisions against the running stack
+    python run.py bench       score those decisions against a sealed answer key
+    python run.py verify      contracts + end-to-end + the benchmark
+    python run.py down        stop everything (keeps the data)
+
+    python run.py bench --list           what could be run
+    python run.py bench-verify           check a report against the audit chain
 
 The Makefile delegates every target here, so there is exactly one
 implementation. That is not tidiness: a shell version and a Python version
@@ -135,13 +139,16 @@ def t_up(_args) -> None:
 
     port = _env_value("AAE_API_PORT", "8088")
     console = _env_value("AAE_CONSOLE_PORT", "8089")
+    lab = _env_value("AAE_LAB_PORT", "8090")
     print(f"""
   Assured Agent Execution is up.
 
     API       http://localhost:{port}
-    Console   http://localhost:{console}
+    Console   http://localhost:{console}    read-only assurance
+    Lab       http://localhost:{lab}    compose a call, act in a role, benchmark
 
-  next:  python run.py scenarios
+  next:  python run.py scenarios     the six decision paths, end to end
+         python run.py bench         score declared calls against the engine
 """)
 
 
@@ -204,9 +211,16 @@ def t_check(_args) -> None:
 
 
 def t_verify(_args) -> None:
-    """Everything, against a stack that must be up."""
+    """Everything, against a stack that must be up.
+
+    The benchmark is part of the gate, not an accessory to it: it is the one
+    check that scores the engine's DECISIONS against a sealed key rather than
+    the product's plumbing, and it spent its first day outside this function —
+    which meant a policy regression would have shipped green.
+    """
     t_compat(None)
     t_e2e(None)
+    t_bench(argparse.Namespace(suite=None, out=None))
 
 
 def t_reseed(_args) -> None:
@@ -248,6 +262,35 @@ def t_scenarios(args) -> None:
     if getattr(args, "evidence_out", None):
         cmd += ["--evidence-out", args.evidence_out]
     run(cmd)
+
+
+def t_bench(args) -> None:
+    """Score the benchmark suites against the running deployment.
+
+    A regression fails the command. It ran with check=False at first, which
+    made the gate decorative: a wrong decision printed FAIL and exited 0, and
+    nothing downstream noticed. Known gaps do not fail — the CLI already
+    distinguishes them — so this is strict without being permanently red.
+    """
+    _ensure_deps()
+    command = [str(VENV_PY), "-m", "aae.cli", "bench"]
+    if getattr(args, "suite", None):
+        command += ["--suite", args.suite]
+    command += ["--out", getattr(args, "out", None) or "benchmarks/report.json"]
+    run(command)
+
+
+def t_bench_verify(args) -> None:
+    """Re-read a report's audit trail from the chain and confirm it.
+
+    Goes through the venv python like every other target: `python -m aae.cli`
+    at the top level finds the system interpreter, which has no `aae` package
+    and no SDK, so the CI step would have failed on an import rather than on
+    the thing it checks.
+    """
+    _ensure_deps()
+    report = getattr(args, "out", None) or "benchmarks/report.json"
+    run([str(VENV_PY), "-m", "aae.cli", "bench", "--verify-trail", report])
 
 
 def t_doctor(_args) -> None:
@@ -293,7 +336,9 @@ TARGETS = {
     "check": t_check, "verify": t_verify, "compat": t_compat, "e2e": t_e2e,
     "reseed": t_reseed,
     "reset": t_reset,
-    "scenarios": t_scenarios, "doctor": t_doctor, "logs": t_logs, "ps": t_ps,
+    "scenarios": t_scenarios, "bench": t_bench,
+    "bench-verify": t_bench_verify,
+    "doctor": t_doctor, "logs": t_logs, "ps": t_ps,
     "backup": t_backup, "restore": t_restore, "sbom": t_sbom,
     "clean": t_clean,
 }
@@ -309,6 +354,7 @@ def main() -> int:
                         help="scenarios: also export evidence to this directory")
     parser.add_argument("--out", help="backup: where to write the archive")
     parser.add_argument("--source", help="restore: the archive to restore")
+    parser.add_argument("--suite", help="bench: run one suite by name")
     parser.add_argument("--no-reset", action="store_true",
                         help="scenarios: keep the accumulated state")
     args = parser.parse_args()

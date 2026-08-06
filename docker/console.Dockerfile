@@ -11,7 +11,11 @@
 # The point of keeping it separate: nothing about the demonstration surface
 # can change the behaviour of the system being demonstrated.
 
-FROM python:3.12-slim
+# Base image pinned by digest, not by tag. `python:3.12-slim` is a moving
+# target: the same Dockerfile built a week apart produced different images, and
+# the tag would not have said so. Update deliberately with
+# `docker buildx imagetools inspect python:3.12-slim`.
+FROM python:3.12-slim@sha256:646fb0bca3dd3ea1bcc6feb72c17ed16eed6e10cffc732fcc1478bd3e7f02d7b
 
 LABEL org.opencontainers.image.title="AAE Assurance Console" \
       org.opencontainers.image.description="Read-only assurance console: enforcement status, governed decisions and business records, on a viewer token and a SELECT-only database credential. Holds no policy, makes no decisions, and exposes no route that writes." \
@@ -26,9 +30,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libpq5 \
  && rm -rf /var/lib/apt/lists/*
 
+COPY docker/requirements.lock /tmp/requirements.lock
 RUN pip install --upgrade pip \
- && pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "httpx>=0.27" \
-                "psycopg[binary]>=3.1"
+ && pip install -r /tmp/requirements.lock \
+ && rm -f /tmp/requirements.lock
 
 # The artifact lock, and nothing else from product/. It is 30 lines of JSON
 # naming which core release this deployment verified — the console reports it

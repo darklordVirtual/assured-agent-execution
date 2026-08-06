@@ -186,9 +186,13 @@ def test_a_failure_never_returns_exception_text(monkeypatch) -> None:
 
 # ── Presentation contracts ─────────────────────────────────────────────────
 
-def test_the_page_names_the_four_surfaces() -> None:
+def test_the_page_names_its_surfaces() -> None:
+    """Three now, not four. `Overview` dissolved: it aggregated things that
+    each belong somewhere with a job — the health banner became the always-
+    visible assurance strip, business counts moved to Records, and recent
+    activity is the Ledger, which is a superset of it."""
     html = _get("/").text
-    for surface in ("Overview", "Decisions", "Business records",
+    for surface in ("Governance ledger", "Business records",
                     "System assurance"):
         assert surface in html, f"{surface} is missing from the shell"
 
@@ -220,21 +224,46 @@ def test_the_client_states_plain_language_before_canonical_values() -> None:
     person needs. Both are shown, and neither replaces the other."""
     script = (STATIC / "aae.js").read_text(encoding="utf-8")
     for canonical, plain in (
-        ("accept", "Allowed"),
-        ("verify", "Approval required"),
-        ("abstain", "Blocked"),
-        ("escalate", "Higher authority required"),
+        ("accept", "Allowed to act without a human"),
+        ("verify", "Held until a human approved it"),
+        ("abstain", "Refused, with nothing offered to approve"),
+        ("escalate", "Routed to a higher authority"),
     ):
-        assert canonical in script and plain in script
+        assert canonical in script and plain in script, (
+            f"{canonical} has no plain-language reading")
 
 
-def test_every_status_carries_a_glyph_and_not_only_colour() -> None:
-    """A console that encodes "failed" as red alone fails the people most
-    likely to be reading it."""
+def test_no_state_is_carried_by_colour_alone() -> None:
+    """A console that encodes "refused" as red alone fails the people most
+    likely to be reading it.
+
+    The mechanism changed with the ledger redesign — the old version painted a
+    glyph through `.state-*::before`, and this test checked for that glyph.
+    The rule it was protecting did not change: every element the CSS colours by
+    state must also carry the state in words. So this asserts the rule rather
+    than the old implementation of it.
+    """
     css = (STATIC / "aae.css").read_text(encoding="utf-8")
-    for kind in ("ok", "warn", "bad", "unknown"):
-        assert re.search(rf"\.state-{kind}::before\s*{{[^}}]*content:", css), (
-            f"state-{kind} has no glyph")
+    script = (STATIC / "aae.js").read_text(encoding="utf-8")
+
+    # Every state-driven colour rule in the stylesheet.
+    coloured = set(re.findall(r'data-(?:state|d)="([a-z]+)"', css))
+    assert coloured, "no state-driven styling found — has the mechanism moved?"
+
+    # Each of those states must be written out somewhere the reader sees it.
+    # `data-d` values are the decision names, which the badge prints verbatim;
+    # `data-state` values are set alongside a spelled-out value in renderStrip
+    # and fact().
+    for value in sorted(coloured):
+        assert value in script, (
+            f"the stylesheet colours by {value!r} but the client never writes "
+            f"it out, so that state would be conveyed by colour alone")
+
+    # The decision badge prints the canonical name, not just a colour.
+    assert 'class="verdict" data-d="${d}">${esc(e.decision)}' in script, (
+        "the decision badge no longer prints the decision name")
+    # And an intervention says REFUSED/VOIDED in words.
+    assert "STOP_LABEL" in script, "interventions carry no worded label"
 
 
 # ── Degraded ───────────────────────────────────────────────────────────────
@@ -282,3 +311,148 @@ def test_records_stay_readable_when_the_control_plane_is_gone() -> None:
     """
     body = _get("/api/records").json()
     assert body["work_orders"]
+
+
+# ── The CSP trap ───────────────────────────────────────────────────────────
+
+def test_no_inline_style_attribute_is_ever_emitted() -> None:
+    """`style="…"` does nothing on this page, and says nothing when it fails.
+
+    The console serves `style-src 'self'` with no `'unsafe-inline'`, so the
+    browser parses the attribute, keeps it in the DOM, and silently declines to
+    apply it. There is no console error and no visual hint beyond the element
+    being the wrong size. The decision-mix bar shipped that way: four segments
+    with correct percentage widths in the markup, collapsed to 40px on screen.
+
+    Scripted styling through the CSSOM (`el.style.width = …`) is unaffected by
+    the policy, so that is the one path that works. This test keeps the
+    attribute form from creeping back — the fix must never be to weaken the CSP
+    on a governance console.
+    """
+    html = _get("/").text
+    script = (STATIC / "aae.js").read_text(encoding="utf-8")
+
+    assert not re.search(r"<[^>]+\sstyle\s*=", html), (
+        "the served HTML carries a style attribute, which the CSP drops")
+
+    # Both ways of producing the attribute from the client. The first version
+    # of this test only looked for a `style="` literal and passed cleanly while
+    # `setAttribute("style", ...)` sat in the file doing nothing — a test for a
+    # silent bug that was itself silent. Proven by reintroducing each form.
+    forbidden = [
+        (r"""\sstyle\s*=\s*\\?["']""", "a style attribute in emitted markup"),
+        (r"""setAttribute\(\s*["']style["']""", "setAttribute with 'style'"),
+    ]
+    for pattern, description in forbidden:
+        hit = re.search(pattern, script)
+        assert hit is None, (
+            f"aae.js builds an inline style through {description} "
+            f"({hit.group(0)!r}). Under this CSP it will not apply, and "
+            f"nothing will say so. Use the CSSOM instead: "
+            f"element.style.width = '...'.")
+
+
+def test_the_policy_that_makes_that_trap_real_is_still_in_force() -> None:
+    """The test above is only meaningful while the CSP actually forbids it.
+
+    Without this, someone could add 'unsafe-inline' to make a style attribute
+    work and the test above would still pass, having quietly stopped
+    protecting anything.
+    """
+    csp = _get("/").headers["content-security-policy"]
+    assert "style-src 'self'" in csp, f"style-src changed: {csp}"
+    assert "unsafe-inline" not in csp, (
+        f"the CSP now allows inline styles, which is a weakening: {csp}")
+
+
+# ── Layout ─────────────────────────────────────────────────────────────────
+
+def test_wide_content_scrolls_inside_its_own_container() -> None:
+    """A table wider than the viewport must not make the page scroll sideways.
+
+    On a laptop the work-order table is already seven columns; on a phone every
+    table is wider than the screen. Wrapping each one lets the table scroll
+    while the page does not.
+    """
+    html = _get("/").text
+    for table in re.findall(r'<table[^>]*id="([^"]+)"', html):
+        block = html[:html.index(f'id="{table}"')]
+        assert 'class="scroll-x"' in block[-400:], (
+            f"table #{table} is not inside a .scroll-x wrapper, so it will "
+            f"scroll the whole page sideways on a narrow screen")
+
+
+def test_the_layout_adapts_to_a_narrow_screen() -> None:
+    """The sidebar becomes a row rather than eating half a phone."""
+    css = (STATIC / "aae.css").read_text(encoding="utf-8")
+    assert re.search(r"@media\s*\(max-width:\s*\d+px\)", css), (
+        "the stylesheet has no narrow-screen rules at all")
+    narrow = css[css.index("@media (max-width:"):]
+    assert "grid-template-columns: 1fr" in narrow, (
+        "the two-column shell is not collapsed on a narrow screen")
+
+
+# ── Contrast ───────────────────────────────────────────────────────────────
+
+def _luminance(colour: str) -> float:
+    channels = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    channels = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+                for c in channels]
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def _palettes() -> dict[str, dict[str, str]]:
+    """The dark palette and the light one, from the stylesheet itself."""
+    css = (STATIC / "aae.css").read_text(encoding="utf-8")
+    split = css.index("@media (prefers-color-scheme: light)")
+    light_block = css[split:]
+    light_block = light_block[:light_block.index("}\n}")]
+
+    def values(text: str) -> dict[str, str]:
+        return dict(re.findall(r"--([a-z-]+):\s*(#[0-9a-fA-F]{6})", text))
+
+    dark = values(css[:split])
+    return {"dark": dark, "light": dark | values(light_block)}
+
+
+#: Foreground tokens used at 10–12px, which is small text under WCAG.
+_SMALL_TEXT = ("paper", "paper-dim", "paper-faint",
+               "accept", "verify", "escalate", "abstain", "stop")
+
+
+@pytest.mark.parametrize("mode", ("dark", "light"))
+@pytest.mark.parametrize("token", _SMALL_TEXT)
+def test_every_text_colour_meets_aa_in_both_modes(mode: str, token: str) -> None:
+    """4.5:1 against both the ground and the raised surface.
+
+    The light palette had never been rendered when it was written, and
+    measuring it found `paper-faint` at 3.4:1 — used for the 10px labels on
+    every fact, table header and sequence number. The dark one was 3.5:1 for
+    the same token. Neither was visible by looking; both are obvious to a
+    reader who needs the contrast.
+    """
+    palette = _palettes()[mode]
+    worst = min(_contrast(palette[token], palette["ink"]),
+                _contrast(palette[token], palette["ink-raise"]))
+    assert worst >= 4.5, (
+        f"{mode}: --{token} is {worst:.1f}:1 against the background. It is "
+        f"used at 10-12px, which needs 4.5:1.")
+
+
+def test_the_chain_spine_meets_the_component_threshold() -> None:
+    """The spine says whether consecutive entries are linked.
+
+    That makes it a UI component conveying information, not decoration, so it
+    needs 3:1. It was #33465c — which looked right and measured 1.7:1.
+    """
+    palette = _palettes()["dark"]
+    worst = min(_contrast(palette["spine-line"], palette["ink"]),
+                _contrast(palette["spine-line"], palette["ink-raise"]))
+    assert worst >= 3.0, (
+        f"the chain spine is {worst:.1f}:1; it carries information, so it "
+        f"needs 3:1")

@@ -1,0 +1,369 @@
+/* AAE Lab — the acting surface.
+ *
+ * Shares aae.css for its tokens, so a decision is the same colour here as in
+ * the console. It departs in exactly one way, deliberately: the masthead is
+ * marked in --stop, because this page can change the system and the console
+ * cannot. Everything else stays identical, so the difference reads as "this
+ * one acts" rather than "this is a different product".
+ */
+
+.lab .lab-masthead {
+  border-bottom: 2px solid var(--stop);
+}
+
+.lab .brand-mark {
+  /* The console's monogram is the four decisions. Here it is one bar in the
+     colour of a control firing: this surface is the thing being governed. */
+  background: var(--stop);
+}
+
+.chip-live {
+  color: var(--stop);
+  border-color: var(--stop);
+}
+
+.lab-warning {
+  margin: 0;
+  padding: 0.55rem 1.5rem 0.7rem;
+  border-top: 1px solid var(--rule-soft);
+  font-size: 0.83rem;
+  line-height: 1.6;
+  color: var(--paper-dim);
+  max-width: 92ch;
+}
+
+.cross-link {
+  font: 500 12px/1 var(--sans);
+  color: var(--paper-dim);
+  text-decoration: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+.cross-link:hover { color: var(--paper); border-color: var(--paper-faint); }
+
+/* ── Workbench ───────────────────────────────────────────────────────── */
+
+.bench-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.composer {
+  display: flex; flex-direction: column; gap: 1.1rem;
+  background: var(--ink-raise);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.35rem; border: 0;
+         padding: 0; margin: 0; min-width: 0; }
+
+.field label, .field legend {
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--paper-faint);
+  padding: 0;
+}
+
+.field select, .field input {
+  background: var(--ink); border: 1px solid var(--rule);
+  border-radius: var(--radius); color: var(--paper);
+  font: 400 13px/1.3 var(--mono);
+  padding: 0.55rem 0.6rem; width: 100%;
+}
+.field input::placeholder { color: var(--paper-faint); }
+
+.hint {
+  margin: 0; font-size: 0.79rem; line-height: 1.5; color: var(--paper-dim);
+}
+
+.args { gap: 0.7rem; }
+.arg-row { display: flex; flex-direction: column; gap: 0.25rem; }
+.arg-row .arg-name {
+  font: 500 11px/1 var(--mono); color: var(--paper-dim);
+}
+.arg-row .arg-rule {
+  font: 400 10px/1.4 var(--mono); color: var(--paper-faint);
+}
+.arg-row .required { color: var(--verify); }
+
+.actions { display: flex; gap: 0.5rem; }
+
+.primary {
+  background: var(--paper); color: var(--ink);
+  border: 1px solid var(--paper); border-radius: var(--radius);
+  font: 600 13px/1 var(--sans); padding: 0.65rem 1rem; cursor: pointer;
+}
+.primary:hover { background: #fff; }
+.primary[disabled] { opacity: 0.5; cursor: default; }
+
+/* ── The envelope ────────────────────────────────────────────────────── */
+
+.outcome-body { min-width: 0; }
+
+.outcome-head {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  padding-bottom: 0.9rem; margin-bottom: 0.9rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.big-verdict {
+  font: 700 15px/1 var(--mono);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.5rem 0.7rem; border-radius: var(--radius);
+  border: 2px solid currentColor;
+}
+.big-verdict[data-d="accept"]   { color: var(--accept); }
+.big-verdict[data-d="verify"]   { color: var(--verify); }
+.big-verdict[data-d="escalate"] { color: var(--escalate); }
+.big-verdict[data-d="abstain"]  { color: var(--abstain); }
+.big-verdict[data-d="refused"]  { color: var(--stop); }
+
+.verdict-say { font-size: 0.92rem; color: var(--paper); }
+
+.envelope { display: grid; gap: 1.1rem; }
+
+.env-block {
+  border: 1px solid var(--rule-soft); border-radius: var(--radius);
+  overflow: hidden;
+}
+.env-block > h3 {
+  margin: 0; padding: 0.6rem 0.85rem;
+  background: var(--ink-raise);
+  border-bottom: 1px solid var(--rule-soft);
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.env-block > p {
+  margin: 0; padding: 0.55rem 0.85rem 0;
+  font-size: 0.8rem; color: var(--paper-dim);
+}
+.env-block dl {
+  margin: 0; padding: 0.6rem 0.85rem 0.85rem;
+  display: grid; grid-template-columns: minmax(140px, auto) 1fr;
+  gap: 0.4rem 1rem;
+}
+.env-block dt {
+  font: 400 11px/1.5 var(--mono); color: var(--paper-faint);
+}
+.env-block dd {
+  margin: 0; font: 400 11px/1.5 var(--mono); color: var(--paper);
+  overflow-wrap: anywhere;
+}
+.env-block dd[data-truth="true"]  { color: var(--accept); }
+.env-block dd[data-truth="false"] { color: var(--stop); }
+.env-block dd[data-truth="null"]  { color: var(--paper-faint); }
+
+.next-step {
+  border: 1px solid var(--verify); border-left-width: 3px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--verify) 8%, transparent);
+  padding: 0.85rem 1rem;
+}
+.next-step h3 {
+  margin: 0 0 0.4rem; font-size: 0.9rem; color: var(--verify);
+}
+.next-step p { margin: 0 0 0.7rem; font-size: 0.85rem; color: var(--paper-dim); }
+.next-step .actions { flex-wrap: wrap; }
+
+.raw {
+  margin: 0; padding: 0.85rem;
+  background: var(--ink); border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  font: 400 11px/1.55 var(--mono); color: var(--paper-dim);
+  overflow-x: auto; max-height: 22rem;
+}
+
+details.raw-wrap > summary {
+  cursor: pointer; font: 400 11px/1 var(--mono); color: var(--paper-faint);
+  padding: 0.4rem 0;
+}
+details.raw-wrap > summary:hover { color: var(--paper); }
+
+/* ── Benchmarks ──────────────────────────────────────────────────────── */
+
+.bench-controls {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.scorecard { display: grid; gap: 1px; background: var(--rule-soft);
+             border: 1px solid var(--rule-soft); border-radius: var(--radius);
+             overflow: hidden; }
+.scorecard:empty { display: none; }
+
+.score-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+  background: var(--ink-raise); padding: 0.8rem 1rem;
+}
+.score-name { font: 600 13px/1 var(--mono); color: var(--paper); }
+.score-desc { font-size: 0.8rem; color: var(--paper-dim); flex: 1 1 24ch;
+              min-width: 0; }
+.score-num  { font: 600 13px/1 var(--mono); }
+.score-num[data-state="ok"]  { color: var(--accept); }
+.score-num[data-state="gap"] { color: var(--verify); }
+.score-num[data-state="bad"] { color: var(--stop); }
+
+.case-list { list-style: none; margin: 1.5rem 0 0; padding: 0;
+             display: grid; gap: 0.6rem; }
+
+.case {
+  border: 1px solid var(--rule-soft); border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--ink-raise); padding: 0.85rem 1rem;
+}
+.case[data-state="matched"]    { border-left-color: var(--accept); }
+.case[data-state="known_gap"]  { border-left-color: var(--verify); }
+.case[data-state="regression"] { border-left-color: var(--stop); }
+.case[data-state="closed"]     { border-left-color: var(--accept); }
+
+.case-top {
+  display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+.case-id { font: 600 12px/1.4 var(--mono); color: var(--paper); }
+.case-tag {
+  font: 600 10px/1 var(--mono); letter-spacing: 0.07em;
+  text-transform: uppercase; padding: 0.25rem 0.4rem;
+  border: 1px solid currentColor; border-radius: 2px;
+}
+.case[data-state="matched"]    .case-tag { color: var(--accept); }
+.case[data-state="known_gap"]  .case-tag { color: var(--verify); }
+.case[data-state="regression"] .case-tag { color: var(--stop); }
+.case[data-state="closed"]     .case-tag { color: var(--accept); }
+
+.case p { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--paper-dim); }
+.case .label {
+  font: 600 10px/1 var(--mono); letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--paper-faint);
+  display: block; margin-top: 0.6rem;
+}
+
+@media (max-width: 1000px) {
+  .bench-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Presets ─────────────────────────────────────────────────────────── */
+
+.presets { margin-bottom: 1.5rem; }
+.presets .section-h { margin-top: 0; }
+
+.preset-list { display: grid; gap: 1rem; }
+
+.preset-group {
+  border: 1px solid var(--rule-soft); border-radius: var(--radius);
+  overflow: hidden;
+}
+.preset-group > h3 {
+  margin: 0; padding: 0.55rem 0.85rem;
+  background: var(--ink-raise); border-bottom: 1px solid var(--rule-soft);
+  font: 600 12px/1.4 var(--sans); color: var(--paper);
+}
+.preset-group > h3 span {
+  display: block; font: 400 11px/1.5 var(--mono); color: var(--paper-faint);
+  margin-top: 0.15rem;
+}
+
+.preset-row { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.7rem; }
+
+.preset {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  background: var(--ink); border: 1px solid var(--rule);
+  border-radius: var(--radius); color: var(--paper-dim);
+  font: 400 12px/1.3 var(--sans);
+  padding: 0.5rem 0.65rem; cursor: pointer; text-align: left;
+  max-width: 100%;
+}
+.preset:hover { color: var(--paper); border-color: var(--paper-faint); }
+.preset .probe {
+  font: 600 9px/1 var(--mono); letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--paper-faint);
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: 0.22rem 0.3rem; flex: none;
+}
+
+/* An argument the signed schema does not declare. Marked, never hidden: the
+   scenario exists to watch the engine refuse it. */
+.arg-undeclared .arg-name { color: var(--stop); }
+.arg-undeclared input { border-color: var(--stop); }
+.undeclared {
+  font: 600 9px/1 var(--mono); letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--stop);
+}
+
+/* ── Choosing what to run ────────────────────────────────────────────── */
+
+.selector { margin-bottom: 1.25rem; }
+.selector .section-h { margin-top: 0; }
+
+.picker { display: grid; gap: 0.6rem; }
+
+.pick-suite {
+  border: 1px solid var(--rule-soft); border-radius: var(--radius);
+  background: var(--ink-raise); overflow: hidden;
+}
+
+.pick-head {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  padding: 0.7rem 0.85rem; cursor: pointer;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.pick-head input { accent-color: var(--focus); width: 15px; height: 15px; }
+.pick-name { font: 600 12px/1.3 var(--mono); color: var(--paper); }
+.pick-title { font-size: 0.85rem; color: var(--paper-dim); flex: 1 1 20ch; }
+
+/* A suite that approves and executes changes the system of record. Said
+   before the click, not discovered after it. */
+.pick-writes {
+  font: 600 9px/1 var(--mono); letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--stop);
+  border: 1px solid var(--stop); border-radius: 2px;
+  padding: 0.24rem 0.34rem; flex: none;
+}
+
+.pick-cases {
+  display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.65rem 0.85rem;
+}
+.pick-case {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.79rem; color: var(--paper-dim);
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 0.34rem 0.45rem;
+}
+.pick-case i {
+  font: 600 9px/1 var(--mono); font-style: normal;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.pick-case b {
+  font: 600 9px/1 var(--mono); color: var(--stop);
+}
+
+.write-warning {
+  border: 1px solid var(--stop); border-left-width: 3px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--stop) 8%, transparent);
+  padding: 0.8rem 1rem; margin-bottom: 1rem;
+  font-size: 0.85rem; color: var(--paper-dim);
+}
+.write-warning b { color: var(--stop); }
+
+#layer-card { margin-top: 1rem; }
+
+/* ── Audit trail ─────────────────────────────────────────────────────── */
+
+.trail { margin-top: 1.75rem; }
+.trail .hint { max-width: 78ch; margin-bottom: 0.9rem; }
+.trail table { margin-top: 0.5rem; }
+
+#trail-state[data-state="ok"]  { color: var(--accept); font-weight: 600; }
+#trail-state[data-state="bad"] { color: var(--stop); font-weight: 600; }
+
+.case p b.ok { color: var(--accept); }
+.case p b.no { color: var(--stop); }

@@ -34,6 +34,7 @@ _SECRETS = {
     "WORKORDER_DB_PASSWORD": (18, "system-of-record admin (migrations only)"),
     "AAE_WORKER_PASSWORD": (18, "system-of-record writer — the tool callables"),
     "AAE_READER_PASSWORD": (18, "system-of-record reader — SELECT only"),
+    "AAE_CHAIN_READER_PASSWORD": (18, "governance chain reader — SELECT only"),
     "AAE_TOKEN_AGENT": (16, "operator role: may propose and execute, never approve"),
     "AAE_TOKEN_REVIEWER": (16, "reviewer: may approve routine holds, never execute"),
     "AAE_TOKEN_EXPERT": (16, "domain_expert: may approve production writes"),
@@ -64,6 +65,7 @@ def _generate() -> str:
         lines.append(f"\n# {comment}\n{name}={secrets.token_urlsafe(entropy)}")
     api_port = _free_port(8088)
     console_port = _free_port(api_port + 1)
+    lab_port = _free_port(console_port + 1)
     wo_port = _free_port(55432)
     lines.append(
         "\n\n# Host ports, chosen at generation time by probing for a free\n"
@@ -72,6 +74,7 @@ def _generate() -> str:
         "# first experience of a product whose pitch is one-command install.\n"
         f"AAE_API_PORT={api_port}\n"
         f"AAE_CONSOLE_PORT={console_port}\n"
+        f"AAE_LAB_PORT={lab_port}\n"
         f"AAE_WORKORDER_DB_PORT={wo_port}\n")
     return "".join(lines)
 
@@ -118,7 +121,29 @@ def main() -> int:
     args = parser.parse_args()
 
     if ENV_FILE.exists() and not args.force:
-        print(f".env already exists, leaving it alone ({ENV_FILE})")
+        # Top up, never rewrite. A secret added to _SECRETS after an install
+        # existed would otherwise never reach it, and the failure lands as
+        # "required variable is missing a value" at `docker compose up` — a
+        # message that says nothing about which command fixes it.
+        #
+        # Only ABSENT names are appended. Rotating a key that already signed
+        # audit entries makes them unverifiable, so nothing here overwrites.
+        existing = {
+            line.split("=", 1)[0].strip()
+            for line in ENV_FILE.read_text(encoding="utf-8").splitlines()
+            if "=" in line and not line.lstrip().startswith("#")
+        }
+        added = [name for name in _SECRETS if name not in existing]
+        if added:
+            with ENV_FILE.open("a", encoding="utf-8") as env:
+                for name in added:
+                    entropy, comment = _SECRETS[name]
+                    env.write(f"\n# {comment} (added on upgrade)\n"
+                              f"{name}={secrets.token_urlsafe(entropy)}\n")
+            print(f"added {len(added)} new secret(s) to .env: "
+                  f"{', '.join(added)}")
+        else:
+            print(f".env already has every secret ({ENV_FILE})")
         return 0
 
     if ENV_FILE.exists():

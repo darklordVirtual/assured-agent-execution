@@ -4,8 +4,7 @@
 
 **Controlled execution for AI-agent tool calls.**
 
-Built on [REMORA](https://github.com/darklordVirtual/REMORA-research), consumed
-as a hash-pinned release rather than a dependency on its `master`.
+Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
 
 Assured Agent Execution (AAE) governs how AI agents interact with tools and
 operational systems.
@@ -75,6 +74,7 @@ cd assured-agent-execution
 
 python run.py up
 python run.py scenarios
+python run.py bench
 ```
 
 `python run.py up`:
@@ -84,9 +84,15 @@ python run.py scenarios
 3. signs the ToolPack;
 4. builds the containers;
 5. applies the database migrations;
-6. starts the control plane and the assurance console.
+6. starts the control plane, the assurance console and the lab.
 
-The API and console URLs are printed when startup completes.
+Three URLs are printed when startup completes:
+
+| | What it is |
+|---|---|
+| **API** | the governance API an agent calls |
+| **Console** | read-only assurance: what was decided, what the controls stopped, and whether any of it can be relied on. One viewer token, no route that writes |
+| **Lab** | compose a call, act in any role, read the whole decision envelope, run the benchmarks. Holds every role token and has no login — a demonstration surface, deliberately separate from the console |
 
 ## Reference scenarios
 
@@ -112,23 +118,12 @@ To try to get past these controls yourself, see
 
 ## REMORA integration
 
-AAE consumes a versioned REMORA release through pinned artifacts:
+AAE runs REMORA's governance engine, consumed as a fixed set of released
+artifacts rather than from its main branch. Every artifact is verified before
+anything uses it, and the install refuses on a mismatch.
 
-* REMORA wheel
-* release manifest
-* OpenAPI specification
-* public SDK contract
-* execution lifecycle schema
-* ToolSpec schema
-* postcondition schema
-
-The active release is defined in:
-
-```text
-product/core-artifact-lock.json
-```
-
-Every artifact is verified before installation and use.
+Which artifacts, the current values, and how to move to a newer release:
+[The pinned core](docs/pinned-core.md).
 
 ## Repository structure
 
@@ -136,7 +131,8 @@ Every artifact is verified before installation and use.
 src/aae/                  CLI, configuration, evidence and verification
 toolpacks/work_order/     Reference ToolPack
 db/workorders/            Example system-of-record schema
-console/                  Read-only assurance console
+console/                  Assurance console (read-only) and lab (can act)
+benchmarks/               Scenarios, sealed answer keys
 docker/                   Container definitions
 product/                  Pinned REMORA artifacts and metadata
 tests/compatibility/      Core compatibility tests
@@ -149,6 +145,7 @@ docs/                     Architecture, security model and operations
 ```bash
 python run.py up          # Start the stack
 python run.py scenarios   # Run the reference scenarios
+python run.py bench       # Score the decisions against a sealed key
 python run.py doctor      # Inspect the deployment
 python run.py check-sign  # Verify the ToolPack
 python run.py check       # Contract tests, no Docker required
@@ -163,6 +160,9 @@ python run.py reset       # Stop and remove all volumes
 ## Documentation
 
 * [Architecture](docs/architecture.md) — components, data flow and boundaries
+* [The pinned core](docs/pinned-core.md) — what is pinned, and how it is verified
+* [Benchmarks](docs/benchmarks.md) — blind scoring against a sealed key, and the audit trail
+* [Build on this](docs/onboarding.md) — adding your own tools, from clone to first governed call
 * [Security model](docs/security-model.md) — what is enforced, and by what
 * [Limitations](docs/limitations.md) — known gaps
 * [Operations](docs/operations.md) — signing, backup, evidence and upgrades
