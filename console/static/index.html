@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>AAE Assurance Console</title>
+<link rel="stylesheet" href="/assets/aae.css">
+</head>
+<body>
+
+<a class="skip" href="#surface">Skip to content</a>
+
+<header class="shell-head">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Assured Agent Execution</span>
+    <span class="chip chip-quiet" title="This console cannot propose, approve or execute">Read-only</span>
+  </div>
+  <div class="head-meta">
+    <span id="updated" class="muted">Loading…</span>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="nav" aria-label="Sections">
+    <button class="nav-item is-active" data-surface="overview" aria-current="page">Overview</button>
+    <button class="nav-item" data-surface="decisions">Decisions</button>
+    <button class="nav-item" data-surface="records">Business records</button>
+    <button class="nav-item" data-surface="assurance">System assurance</button>
+  </nav>
+
+  <main id="surface" class="surface" tabindex="-1">
+
+    <!-- ── Overview ─────────────────────────────────────────────────── -->
+    <section id="s-overview" class="panel">
+      <div id="status-banner" class="banner banner-loading">
+        <span class="banner-icon" aria-hidden="true">…</span>
+        <div>
+          <p class="banner-title">Checking enforcement controls</p>
+          <p class="banner-sub" id="status-sub"></p>
+        </div>
+      </div>
+
+      <section aria-labelledby="attention-h">
+        <h2 id="attention-h">Needs attention</h2>
+        <ul id="attention" class="attention"></ul>
+      </section>
+
+      <section aria-labelledby="business-h">
+        <h2 id="business-h">Business state</h2>
+        <dl class="facts" id="business-facts"></dl>
+      </section>
+
+      <section aria-labelledby="activity-h">
+        <h2 id="activity-h">Recent verified actions</h2>
+        <div class="scroll-x">
+          <table id="activity">
+            <caption class="sr-only">Most recent governed writes to the system of record</caption>
+            <thead><tr>
+              <th scope="col">When</th><th scope="col">Record</th>
+              <th scope="col">Action</th><th scope="col">By</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ── Decisions ────────────────────────────────────────────────── -->
+    <section id="s-decisions" class="panel" hidden>
+      <h2>Decisions</h2>
+      <p class="lede">
+        Look up a governed proposal by its identifier to see what was decided,
+        why, who had to approve it, and whether the effect was confirmed.
+      </p>
+
+      <form id="lookup" class="lookup" autocomplete="off">
+        <label for="pid" class="sr-only">Proposal identifier</label>
+        <input id="pid" name="pid" type="text" spellcheck="false"
+               placeholder="Proposal identifier — press / to focus"
+               aria-describedby="lookup-hint">
+        <button type="submit">Look up</button>
+      </form>
+      <p id="lookup-hint" class="muted small">
+        This console lists no decision feed. The engine can return a proposal
+        by identifier and cannot yet enumerate them, and the business event log
+        carries no proposal identifier — so a “recent decisions” list here
+        would be a reconstruction shown as a record.
+      </p>
+
+      <div id="decision-result" class="result" aria-live="polite"></div>
+    </section>
+
+    <!-- ── Business records ─────────────────────────────────────────── -->
+    <section id="s-records" class="panel" hidden>
+      <h2>Business records</h2>
+      <p class="lede">
+        Read directly from the system of record on a credential that holds
+        <code>SELECT</code> and nothing else.
+      </p>
+      <div class="scroll-x">
+        <table id="records">
+          <caption class="sr-only">Work orders in the system of record</caption>
+          <thead><tr>
+            <th scope="col">Work order</th><th scope="col">Title</th>
+            <th scope="col">Asset</th><th scope="col">Status</th>
+            <th scope="col">Priority</th><th scope="col">Last changed by</th>
+            <th scope="col">Last changed</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h2>Change history</h2>
+      <div class="scroll-x">
+        <table id="history">
+          <caption class="sr-only">Governed writes recorded by the product</caption>
+          <thead><tr>
+            <th scope="col">When</th><th scope="col">Record</th>
+            <th scope="col">Action</th><th scope="col">Change</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── System assurance ─────────────────────────────────────────── -->
+    <section id="s-assurance" class="panel" hidden>
+      <h2>System assurance</h2>
+      <p class="lede">
+        The technical evidence behind everything shown elsewhere. If any of
+        this is wrong, nothing on the other surfaces can be relied upon.
+      </p>
+      <dl class="facts facts-wide" id="assurance-facts"></dl>
+    </section>
+
+  </main>
+</div>
+
+<aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title" role="dialog" aria-modal="true">
+  <div class="drawer-head">
+    <h2 id="drawer-title">Technical evidence</h2>
+    <button id="drawer-close" class="ghost" aria-label="Close (Escape)">Close</button>
+  </div>
+  <div id="drawer-body" class="drawer-body"></div>
+</aside>
+
+<script src="/assets/aae.js"></script>
+</body>
+</html>

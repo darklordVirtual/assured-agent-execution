@@ -114,24 +114,32 @@ def test_the_dashboard_exposes_no_mutating_route(live, method: str) -> None:
 
 # ── It still does its job ──────────────────────────────────────────────────
 
-def test_the_posture_panel_still_reports(live) -> None:
-    """Dropping four tokens must not have cost the dashboard its purpose."""
+def test_the_assurance_panel_still_reports(live) -> None:
+    """Dropping four tokens must not have cost the dashboard its purpose.
+
+    `/api/posture` is the old path kept so an existing bookmark resolves; it
+    now carries the current payload, which uses product terminology rather
+    than the engine's internal names. A path that answered with the OLD shape
+    would be a compatibility promise this product is not making.
+    """
     import httpx
 
-    posture = httpx.get(f"{_console_url(live)}/api/posture", timeout=15).json()
-    assert posture["reachable"] is True
-    assert posture["runtime_mode"] == "production"
-    assert posture["surfaces"] == ["execution"]
-    assert posture["audit_chain"]["valid"] is True
-    assert posture["toolspec"]["pinned"] is True
+    for path in ("/api/assurance", "/api/posture"):
+        body = httpx.get(f"{_console_url(live)}{path}", timeout=15).json()
+        assert body["reachable"] is True, path
+        assert body["runtime_mode"] == "production", path
+        assert body["capabilities"] == ["execution"], path
+        assert body["audit"]["verified"] is True, path
+        assert body["tool_policy_pinned"] is True, path
 
 
 def test_the_records_panel_still_reports(live) -> None:
     import httpx
 
-    body = httpx.get(f"{_console_url(live)}/api/work-orders", timeout=15).json()
-    assert len(body["work_orders"]) >= 4
-    assert "events" in body
+    for path in ("/api/records", "/api/work-orders"):
+        body = httpx.get(f"{_console_url(live)}{path}", timeout=15).json()
+        assert len(body["work_orders"]) >= 4, path
+        assert "events" in body, path
 
 
 # ── The image itself ───────────────────────────────────────────────────────

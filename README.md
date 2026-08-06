@@ -81,9 +81,9 @@ python run.py scenarios
 3. signs the ToolPack;
 4. builds the containers;
 5. applies the database migrations;
-6. starts the control plane and dashboard.
+6. starts the control plane and the assurance console.
 
-The API and dashboard URLs are printed when startup completes.
+The API and console URLs are printed when startup completes.
 
 ## Reference scenarios
 
@@ -133,7 +133,7 @@ Every artifact is verified before installation and use.
 src/aae/                  CLI, configuration, evidence and verification
 toolpacks/work_order/     Reference ToolPack
 db/workorders/            Example system-of-record schema
-console/                  Local demonstration dashboard
+console/                  Read-only assurance console
 docker/                   Container definitions
 product/                  Pinned REMORA artifacts and metadata
 tests/compatibility/      Core compatibility tests
@@ -165,6 +165,13 @@ python run.py reset       # Stop and remove all volumes
 * [Operations](docs/operations.md) — signing, backup, evidence and upgrades
 * [Attack the demo](docs/tutorials/attack-the-demo.md) — try to get past the controls
 * [Decision records](docs/adr/) — why the architecture is the way it is
+
+## Security
+
+Report suspected vulnerabilities to support@luftfiber.no rather than in a
+public issue. [SECURITY.md](SECURITY.md) states the scope;
+[docs/security-model.md](docs/security-model.md) states control by control
+what is enforced and what is only declared.
 
 ## Non-claims
 
