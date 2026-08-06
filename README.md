@@ -1,141 +1,184 @@
 # Assured Agent Execution
 
-**A reference runtime for governing what an AI agent is allowed to do.**
+**Controlled execution for AI-agent tool calls.**
 
-An agent proposes a tool call. AAE evaluates it through a pinned REMORA core,
-routes it to one of four decisions, executes what is approved, and then checks
-whether the expected effect actually occurred.
+Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
 
+Assured Agent Execution (AAE) governs how AI agents interact with tools and
+operational systems.
+
+Every proposed tool call receives one of four decisions:
+
+| Decision | Action |
+| --- | --- |
+| **ACCEPT** | Execute automatically |
+| **VERIFY** | Require approval |
+| **ABSTAIN** | Stop |
+| **ESCALATE** | Route to a higher authority |
+
+AAE binds authorization to the exact tool call, separates approval from
+execution, verifies selected effects against the system of record, and records
+the complete execution lifecycle.
+
+> **Status:** local reference vertical, version `0.1.0-dev`. Not
+> production-hardened, and no external security review has been performed.
+> See [Limitations](docs/limitations.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[AI agent or application] --> B[AAE control plane]
+
+    R[Pinned REMORA core] --> B
+    T[Signed ToolPack] --> B
+    I[Authority source] --> B
+
+    B --> D{Decision}
+
+    D -->|ACCEPT| X[Execute]
+    D -->|VERIFY| V[Required approval]
+    D -->|ABSTAIN| S[Stop]
+    D -->|ESCALATE| H[Higher authority]
+
+    V --> X
+    H --> V
+
+    X --> O[System of record]
+    O --> P[Read-only effect verification]
+
+    B --> E[Audit and evidence]
+    P --> E
 ```
-agent
-  │ proposes a tool call
-  ▼
-AAE ── pinned REMORA control plane
-  ├─ ACCEPT ────────────────► execute
-  ├─ VERIFY ──► human review ► execute
-  ├─ ABSTAIN ───────────────► stop
-  └─ ESCALATE ──────────────► higher authority
-                                   │
-                                   ▼
-                          verify the effect really happened
-```
 
-This repository holds the product integration, a reference ToolPack for
-maintenance work orders, and a local Docker deployment. It does **not** contain
-the REMORA research source tree — that is consumed as a hash-pinned release.
+## Core capabilities
+
+* Four-way decision routing
+* Exact-payload approval binding
+* Separate identities for proposing, approving and executing
+* Deployment-controlled ToolSpecs
+* Pinned and verified REMORA artifacts
+* Read-only postcondition verification
+* Replay-resistant execution grants
+* Lifecycle and evidence export
 
 ## Quickstart
 
-Requires Docker, Python 3.11+ and `gh`.
+### Requirements
+
+* Docker with Docker Compose
+* Python 3.11 or newer
+* Authenticated GitHub CLI (`gh`)
 
 ```bash
 git clone https://github.com/darklordVirtual/assured-agent-execution
 cd assured-agent-execution
+
 python run.py up
 python run.py scenarios
 ```
 
-Nothing to configure. `up` generates this installation's own keys, passwords
-and tokens, picks free ports, and prints the URLs.
+`python run.py up`:
 
-## What the reference scenario shows
+1. fetches and verifies the pinned REMORA artifacts;
+2. creates installation-specific credentials;
+3. signs the ToolPack;
+4. builds the containers;
+5. applies the database migrations;
+6. starts the control plane and dashboard.
 
-```
-[PASS] ACCEPT    grounded read under a signed work order → executes, token single-use
-[PASS] VERIFY    production close → held → domain_expert approves → executes
-                 → EFFECT_VERIFIED against the database, on a read-only credential
-[PASS] ABSTAIN   same read, unresolvable authority → stops
-[PASS] ESCALATE  destructive tool → required_role=senior_authority
-[PASS] BINDING   approve one payload, execute another → binding_refused
-[PASS] ROLES     the approver cannot execute
-```
+The API and dashboard URLs are printed when startup completes.
 
-The VERIFY line is the one to read twice. A production write was held; the
-agent that proposed it could not approve it; the identity the *decision* named
-released it; and a separate process holding `SELECT` and nothing else then
-confirmed the change was really in the database.
+## Reference scenarios
 
-Check it yourself:
+The included work-order ToolPack demonstrates the complete execution flow:
 
-```bash
-docker compose exec workorder-db psql -U wo_admin -d workorders \
-  -c "SELECT wo_id, status, updated_by FROM work_orders ORDER BY wo_id"
+```text
+ACCEPT     Grounded read executes automatically
+VERIFY     Production write requires approval
+ABSTAIN    Unresolved authority stops the request
+ESCALATE   Destructive action requires senior authority
+BINDING    Approval cannot be reused for another payload
+ROLES      An approver cannot execute its own approval
 ```
 
-Then try to get past it:
-[docs/tutorials/attack-the-demo.md](docs/tutorials/attack-the-demo.md).
+The main governed path is:
 
-## How AAE relates to REMORA
-
-REMORA is the governance engine — decision semantics, audit chain, execution
-lifecycle. AAE is a **product integration and controlled execution profile**
-on top of it.
-
-AAE owns the deployment profile, the pin regime, the ToolPack, the CLI, the
-postcondition reader, the evidence export and the demo dashboard. The control
-plane itself is REMORA's API, installed from a wheel whose SHA-256 — along with
-six other artifacts — is verified before anything trusts it:
-
-```bash
-python scripts/verify_core_pin.py --out dist   # refuses on any mismatch
+```text
+propose → assess → approve → execute → verify effect → record
 ```
 
-## Repository layout
+To try to get past these controls yourself, see
+[Attack the demo](docs/tutorials/attack-the-demo.md).
 
+## REMORA integration
+
+AAE consumes a versioned REMORA release through pinned artifacts:
+
+* REMORA wheel
+* release manifest
+* OpenAPI specification
+* public SDK contract
+* execution lifecycle schema
+* ToolSpec schema
+* postcondition schema
+
+The active release is defined in:
+
+```text
+product/core-artifact-lock.json
 ```
-src/aae/       product code: CLI, config, verification, evidence
-toolpacks/     the work-order reference ToolPack
-db/            the reference system-of-record schema
-docker/        images; docker-compose.yml is the local deployment
-product/       the pinned REMORA artifact lock and release manifest
-console/       local demonstration dashboard — not an operator console
-tests/         contract, end-to-end, security, fault
+
+Every artifact is verified before installation and use.
+
+## Repository structure
+
+```text
+src/aae/                  CLI, configuration, evidence and verification
+toolpacks/work_order/     Reference ToolPack
+db/workorders/            Example system-of-record schema
+console/                  Local demonstration dashboard
+docker/                   Container definitions
+product/                  Pinned REMORA artifacts and metadata
+tests/compatibility/      Core compatibility tests
+tests/e2e/                Execution and security tests
+docs/                     Architecture, security model and operations
 ```
 
 ## Commands
 
 ```bash
-python run.py up | down | reset     # start · stop · stop and destroy volumes
-python run.py check                 # contract tests, no Docker needed
-python run.py verify                # everything, against a stack that must be up
-python run.py scenarios             # the four decisions
-python run.py sign | check-sign     # the signed ToolSpec bundle
-python run.py backup | restore      # both databases and the bundle
-python run.py sbom                  # what is inside the images
-python run.py doctor                # what is pinned, served, reachable
+python run.py up          # Start the stack
+python run.py scenarios   # Run the reference scenarios
+python run.py doctor      # Inspect the deployment
+python run.py check-sign  # Verify the ToolPack
+python run.py check       # Contract tests, no Docker required
+python run.py verify      # Contract and end-to-end tests
+python run.py down        # Stop the stack
+python run.py reset       # Stop and remove all volumes
 ```
 
-## Maturity
-
-**Local reference vertical.** It demonstrates pinned-core consumption,
-role-separated approval and execution, signed ToolSpecs and effect
-verification. It is not production-hardened and has had no external security
-review.
-
-[docs/limitations.md](docs/limitations.md) lists the known gaps and is kept
-current. The short version: tools run inside the control-plane process,
-ToolSpec signing is symmetric, there is no OIDC, and a fully grounded
-medium-risk write currently abstains with no path forward — an open issue in
-the core.
-
-AAE does not claim that agents are always correct, that all tools can be
-effect-verified, that safety is guaranteed, or that bypass is impossible when
-an agent keeps direct tool credentials.
+`backup`, `restore`, `sbom`, `sign` and `reseed` are documented in
+[Operations](docs/operations.md).
 
 ## Documentation
 
-| | |
-|---|---|
-| [architecture.md](docs/architecture.md) | components, data flow, boundaries |
-| [security-model.md](docs/security-model.md) | what is enforced, and by what |
-| [limitations.md](docs/limitations.md) | known gaps |
-| [operations.md](docs/operations.md) | signing, backup, evidence, upgrades |
-| [tutorials/attack-the-demo.md](docs/tutorials/attack-the-demo.md) | try to get past the controls |
-| [adr/](docs/adr/) | why the architecture is the way it is |
+* [Architecture](docs/architecture.md) — components, data flow and boundaries
+* [Security model](docs/security-model.md) — what is enforced, and by what
+* [Limitations](docs/limitations.md) — known gaps
+* [Operations](docs/operations.md) — signing, backup, evidence and upgrades
+* [Attack the demo](docs/tutorials/attack-the-demo.md) — try to get past the controls
+* [Decision records](docs/adr/) — why the architecture is the way it is
+
+## Non-claims
+
+AAE does not claim that agents are always correct, that all tools can be
+effect-verified, that safety is guaranteed, or that bypass is impossible when
+an agent retains direct tool credentials.
 
 ## License
 
-Business Source License 1.1. Commercial production use beyond the Additional
-Use Grant needs separate written terms — see [LICENSING.md](LICENSING.md).
+Source-available under the Business Source License 1.1.
 
-The pinned REMORA core is a separate Licensed Work under the same licensor.
+See [LICENSING.md](LICENSING.md) for permitted use and commercial terms. The
+pinned REMORA core is a separate Licensed Work under the same licensor.
