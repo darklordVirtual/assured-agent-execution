@@ -1,10 +1,18 @@
-name: PR — pinned-core compatibility
+name: PR — pinned core, contract, and the running vertical
 
-# The product's dependency direction only holds if the pin is verified on
-# every change. This job fetches the pinned REMORA release, refuses on any
-# hash mismatch, installs the SDK from that exact wheel, and proves the
-# surface this product depends on is present — plus that no product source
-# imports a REMORA internal namespace.
+# Two jobs, and the split is deliberate.
+#
+# The contract job needs no Docker and runs in seconds: it verifies the pin,
+# checks the hand-written lock against the release-generated manifest, and
+# proves the SDK surface this product depends on is really there. That is the
+# fast gate, and it fails before anything is built.
+#
+# The vertical job brings the whole product up the way the README says to and
+# runs the four decisions against it. Everything interesting this product got
+# wrong was found by running it, not by unit testing it: an approver token
+# that could also execute, a refusal that arrives as an outcome rather than an
+# exception, a CRLF entrypoint, a hardcoded port, a runner module shadowing
+# the package it was meant to run.
 
 on:
   pull_request:
@@ -15,34 +23,67 @@ permissions:
   contents: read
 
 jobs:
-  pinned-core-contract:
+  contract:
     name: Pinned core artifacts and SDK contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Verify the pinned core artifacts
-        # Exit 1 = the artifacts are not what we pinned (fail loudly).
-        # Exit 2 = we could not reach the release (also a failure, but a
-        # different one; the script keeps them distinct on purpose).
+        # Exit 1 = the artifacts are not what we pinned. Exit 2 = we could not
+        # reach the release. Kept distinct so a network outage never reads as
+        # a tampered artifact.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/verify_core_pin.py --out dist
 
       - name: Install the SDK from the pinned wheel
-        # From the wheel we just hash-verified — never from source, never
-        # from REMORA master.
         run: |
           python -m pip install --upgrade pip
-          pip install pytest "$(ls dist/remora-*.whl)[sdk]"
+          pip install pytest "psycopg[binary]" "$(ls dist/remora-*.whl)[sdk]"
+          pip install -e .
 
-      - name: SDK contract and import-boundary tests
+      - name: Contract, manifest agreement and import boundary
         run: python -m pytest tests/compatibility -q
+
+  vertical:
+    name: The product, running
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Bring the whole product up
+        # The same command the README gives a new developer. If this step
+        # breaks, the install instructions are broken, which is the point of
+        # running it here rather than a bespoke CI-only path.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python run.py up
+
+      - name: The four decisions
+        run: python run.py scenarios
+
+      - name: End-to-end, security and fault tests
+        run: python run.py e2e
+
+      - name: The signed ToolSpec bundle still verifies
+        run: python run.py check-sign
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 120 control-plane
+          docker compose logs --tail 40 workorder-migrate
+
+      - name: Tear down
+        if: always()
+        run: python run.py down
