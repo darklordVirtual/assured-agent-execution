@@ -148,10 +148,21 @@ def test_only_the_declared_delta_is_compared(live, reader_conn) -> None:
 # ── Unknown and malformed calls ────────────────────────────────────────────
 
 def test_an_unknown_tool_is_never_accepted(agent) -> None:
-    """The fail-closed floor: a name nothing classifies is critical/unknown."""
-    result = agent.assess(ToolCall(
-        tool_name="calibrate_flux_capacitor", arguments={"target": "P-7"},
-        target_environment="prod", intent_ref="WO-1201"))
+    """A name nothing classifies must never execute.
+
+    Two layers refuse it, and which one gets there first depends on
+    deployment configuration. With a signed ToolSpec bundle, strict mode
+    refuses at `toolspec_unknown_tool` before any decision is reached.
+    Without one, the policy floor classifies it critical/unknown and the
+    engine declines. This asserts the property both layers exist for,
+    rather than pinning the test to whichever happens to be first.
+    """
+    try:
+        result = agent.assess(ToolCall(
+            tool_name="calibrate_flux_capacitor", arguments={"target": "P-7"},
+            target_environment="prod", intent_ref="WO-1201"))
+    except RemoraError:
+        return  # refused before a decision was reached
     assert result.action.value != "accept"
     assert not result.execution_token
 

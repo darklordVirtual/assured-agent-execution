@@ -122,7 +122,17 @@ def test_removing_any_single_ground_removes_the_accept(
     if baseline.action is not DecisionAction.ACCEPT:
         pytest.skip("the baseline read does not ACCEPT here; nothing to remove")
 
-    result = agent.assess(ToolCall(**call_args))
+    # Two shapes of refusal, one property. With a signed ToolSpec bundle
+    # configured, enforcement is strict: a target the spec does not
+    # allow is refused outright rather than assessed and declined. Both
+    # are correct — the test asserts what must never happen, not which
+    # mechanism prevented it.
+    from remora.sdk import RemoraError
+
+    try:
+        result = agent.assess(ToolCall(**call_args))
+    except RemoraError:
+        return  # refused before a decision was reached
     assert result.action is not DecisionAction.ACCEPT, (
         f"still accepted although {why}"
     )

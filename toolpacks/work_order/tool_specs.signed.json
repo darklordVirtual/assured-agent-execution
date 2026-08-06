@@ -1,0 +1,325 @@
+{
+  "_callable_digest_note": "The callable_digest values below are placeholders. sign_toolpack.py overwrites every one of them from inspect.getsource of the registered function, and refuses to sign if a declared tool has no callable or a registered callable has no spec.",
+  "_comment": "UNSIGNED source for this deployment's ToolSpec bundle. Never loaded at runtime — scripts/sign_toolpack.py computes each callable_digest from the function actually registered, signs the result with the deployment's key, and writes tool_specs.signed.json, which is what the control plane loads. A ToolSpec is the authority to call a tool: its argument schema, the environments it may touch, the credentials it may use, whether its effect can be read back. One signed spec replaces four sources that could previously disagree — the static registry metadata, the callable registry, the semantic contract, and the client-asserted schema_valid flag.",
+  "registry_signature": {
+    "algorithm": "HMAC-SHA256",
+    "signature": "e49c9531850b3a1e1176259bf07a7fcb9084d9852038104f40e2c95e163dac94",
+    "signed_at": "2026-08-06T00:07:20+00:00",
+    "signing_identity": "aae.work_order_signer/v1"
+  },
+  "schema_version": 1,
+  "tool_specs": [
+    {
+      "action_type": "read",
+      "allowed_targets": [
+        "staging"
+      ],
+      "argument_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "wo_id": {
+            "pattern": "^WO-[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wo_id"
+        ],
+        "type": "object"
+      },
+      "callable_digest": "sha256:3ffe66ab867a5ee827f2365ad2bcdeb5347470c6521381299604a160881a8843",
+      "capabilities": [
+        "maintenance_read"
+      ],
+      "compensation_tool": null,
+      "credential_scope": [
+        "workorders:read"
+      ],
+      "description": "Return one work order from the maintenance system of record. Reads only; performs no write and records no event.",
+      "domain": "maintenance",
+      "idempotency_contract": {
+        "key_derivation": "canonical_args",
+        "safe_to_retry": true
+      },
+      "implementation_identity": "aae.toolpacks.work_order.registry@0.1.0",
+      "network_policy": {
+        "egress": "none"
+      },
+      "postcondition_reader": null,
+      "risk_tier": "low",
+      "semantic_contract": {
+        "argument_roles": {
+          "wo_id": "target_resource"
+        },
+        "capability": "maintenance",
+        "effect": "read",
+        "mutation": false,
+        "resource_type": "work_order"
+      },
+      "signing_identity": "aae.work_order_signer/v1",
+      "timeout_policy": {
+        "dispatch_timeout_seconds": 10
+      },
+      "tool_id": "read_work_order",
+      "version": 1
+    },
+    {
+      "action_type": "write",
+      "allowed_targets": [
+        "staging",
+        "prod"
+      ],
+      "argument_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "priority": {
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ],
+            "type": "string"
+          },
+          "wo_id": {
+            "pattern": "^WO-[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wo_id",
+          "priority"
+        ],
+        "type": "object"
+      },
+      "callable_digest": "sha256:e3757c4cedf5c007b92a6b12529d96b2b41676708f76423dec0c706d9436715b",
+      "capabilities": [
+        "maintenance_write"
+      ],
+      "compensation_tool": "set_work_order_priority",
+      "credential_scope": [
+        "workorders:read",
+        "workorders:write"
+      ],
+      "description": "Set the priority of an existing work order to low, normal or high. Records the previous value in the event log.",
+      "domain": "maintenance",
+      "idempotency_contract": {
+        "key_derivation": "canonical_args",
+        "safe_to_retry": true
+      },
+      "implementation_identity": "aae.toolpacks.work_order.registry@0.1.0",
+      "network_policy": {
+        "egress": "none"
+      },
+      "postcondition_reader": "aae.work_order_reader/v1",
+      "risk_tier": "low",
+      "semantic_contract": {
+        "argument_roles": {
+          "wo_id": "target_resource"
+        },
+        "capability": "maintenance",
+        "effect": "update",
+        "mutation": true,
+        "resource_type": "work_order",
+        "state_delta": {
+          "work_order.priority": "changed"
+        }
+      },
+      "signing_identity": "aae.work_order_signer/v1",
+      "timeout_policy": {
+        "dispatch_timeout_seconds": 10
+      },
+      "tool_id": "set_work_order_priority",
+      "version": 1
+    },
+    {
+      "action_type": "write",
+      "allowed_targets": [
+        "staging",
+        "prod"
+      ],
+      "argument_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 3,
+            "type": "string"
+          },
+          "wo_id": {
+            "pattern": "^WO-[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wo_id",
+          "title",
+          "asset_id"
+        ],
+        "type": "object"
+      },
+      "callable_digest": "sha256:328c562d28465ce9ed93e25412e58b025972dc7700fd73b34c7168f00d32ff44",
+      "capabilities": [
+        "maintenance_write"
+      ],
+      "compensation_tool": null,
+      "credential_scope": [
+        "workorders:read",
+        "workorders:write"
+      ],
+      "description": "Open a new work order against a named asset. Refuses if the identifier already exists rather than returning the existing record.",
+      "domain": "maintenance",
+      "idempotency_contract": {
+        "key_derivation": "canonical_args",
+        "safe_to_retry": false
+      },
+      "implementation_identity": "aae.toolpacks.work_order.registry@0.1.0",
+      "network_policy": {
+        "egress": "none"
+      },
+      "postcondition_reader": "aae.work_order_reader/v1",
+      "risk_tier": "medium",
+      "semantic_contract": {
+        "argument_roles": {
+          "wo_id": "target_resource"
+        },
+        "capability": "maintenance",
+        "effect": "create",
+        "mutation": true,
+        "resource_type": "work_order",
+        "state_delta": {
+          "work_order.status": "open"
+        }
+      },
+      "signing_identity": "aae.work_order_signer/v1",
+      "timeout_policy": {
+        "dispatch_timeout_seconds": 10
+      },
+      "tool_id": "create_work_order",
+      "version": 1
+    },
+    {
+      "action_type": "production_write",
+      "allowed_targets": [
+        "staging",
+        "prod"
+      ],
+      "argument_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "wo_id": {
+            "pattern": "^WO-[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wo_id"
+        ],
+        "type": "object"
+      },
+      "callable_digest": "sha256:f0180b6c81112a43df85eba587302128ef6494d6f67fc7591035078068bbba5d",
+      "capabilities": [
+        "maintenance_write"
+      ],
+      "compensation_tool": null,
+      "credential_scope": [
+        "workorders:read",
+        "workorders:write"
+      ],
+      "description": "Close an open work order with a stated reason. Refuses a work order that is not open, so a close is never recorded twice.",
+      "domain": "maintenance",
+      "idempotency_contract": {
+        "key_derivation": "canonical_args",
+        "safe_to_retry": false
+      },
+      "implementation_identity": "aae.toolpacks.work_order.registry@0.1.0",
+      "network_policy": {
+        "egress": "none"
+      },
+      "postcondition_reader": "aae.work_order_reader/v1",
+      "risk_tier": "high",
+      "semantic_contract": {
+        "argument_roles": {
+          "wo_id": "target_resource"
+        },
+        "capability": "maintenance",
+        "effect": "close",
+        "mutation": true,
+        "resource_type": "work_order",
+        "state_delta": {
+          "work_order.status": "closed"
+        }
+      },
+      "signing_identity": "aae.work_order_signer/v1",
+      "timeout_policy": {
+        "dispatch_timeout_seconds": 15
+      },
+      "tool_id": "close_work_order",
+      "version": 1
+    },
+    {
+      "action_type": "destructive_write",
+      "allowed_targets": [
+        "prod"
+      ],
+      "argument_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "wo_id": {
+            "pattern": "^WO-[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wo_id"
+        ],
+        "type": "object"
+      },
+      "callable_digest": "sha256:4991784751c39a6aa39760cc258aa0e4f0f274593c147002500d11740c10cbf5",
+      "capabilities": [
+        "maintenance_admin"
+      ],
+      "compensation_tool": null,
+      "credential_scope": [
+        "workorders:admin"
+      ],
+      "description": "Remove the event history of a work order. Declared and deliberately unimplemented: the worker role holds no DELETE grant anywhere, because a governed system whose worker can erase the record of what it did is not governed.",
+      "domain": "maintenance",
+      "idempotency_contract": {
+        "key_derivation": "canonical_args",
+        "safe_to_retry": false
+      },
+      "implementation_identity": "aae.toolpacks.work_order.registry@0.1.0",
+      "network_policy": {
+        "egress": "none"
+      },
+      "postcondition_reader": null,
+      "risk_tier": "critical",
+      "semantic_contract": {
+        "argument_roles": {
+          "wo_id": "target_resource"
+        },
+        "capability": "maintenance",
+        "effect": "delete",
+        "mutation": true,
+        "resource_type": "work_order",
+        "state_delta": {
+          "work_order.history": "removed"
+        }
+      },
+      "signing_identity": "aae.work_order_signer/v1",
+      "timeout_policy": {
+        "dispatch_timeout_seconds": 30
+      },
+      "tool_id": "purge_work_order_history",
+      "version": 1
+    }
+  ]
+}

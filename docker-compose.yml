@@ -180,6 +180,27 @@ services:
       # here and not by default there.
       REMORA_GROUNDED_READ_ACCEPT: "1"
 
+      # --- Signed ToolSpec bundle ----------------------------------------
+      # The authority to call each tool: argument schema, allowed targets,
+      # credential scope, whether the effect can be read back. Signed by the
+      # deployment (`make sign`), never by the agent.
+      #
+      # With a bundle configured, enforcement is STRICT — there is no
+      # trust-on-first-use and no legacy fallback. A fallback that ran the
+      # action anyway would turn every signature failure into a no-op, which
+      # is worse than having no signature at all because it reads as
+      # protection.
+      #
+      # The pinned digest is the part people skip. A signature proves the
+      # bundle is authentic; it says nothing about whether it is CURRENT. A
+      # correctly-signed older bundle — one where a tool was cheaper, or an
+      # allowed target wider — is the subtle attack, and pinning is what
+      # refuses it. `make sign` prints the digest to put here.
+      REMORA_TOOLSPEC_BUNDLE: /app/toolpacks/work_order/tool_specs.signed.json
+      REMORA_TOOLSPEC_SIGNING_KEY: ${REMORA_TOOLSPEC_SIGNING_KEY:?run "make up" then "make sign"}
+      REMORA_TOOLSPEC_TRUSTED_IDENTITIES: aae.work_order_signer/v1
+      REMORA_TOOLSPEC_PINNED_DIGEST: ${REMORA_TOOLSPEC_PINNED_DIGEST:-}
+
       # --- The system of record ------------------------------------------
       # The control plane's tool callables get the WRITER credential and
       # nothing else. The reader DSN is deliberately absent from this
@@ -191,6 +212,36 @@ services:
       REMORA_PROMETHEUS_PUBLIC: "1"
     volumes:
       - aae-artifacts:/var/lib/aae/artifacts
+
+  # ── Operator console ────────────────────────────────────────────────────
+  # A separate image that imports no REMORA module and holds no policy. It
+  # shells out to the product CLI for the scenarios rather than keeping its
+  # own copy — a console that could show green while the CLI showed red
+  # would leave nobody able to say which one described the product.
+  console:
+    build:
+      context: .
+      dockerfile: docker/console.Dockerfile
+    depends_on:
+      control-plane: {condition: service_healthy}
+    ports:
+      - "${AAE_CONSOLE_PORT:-8089}:8090"
+    environment:
+      AAE_API_URL: http://control-plane:8000
+      AAE_TOKEN_AGENT: ${AAE_TOKEN_AGENT}
+      AAE_TOKEN_REVIEWER: ${AAE_TOKEN_REVIEWER}
+      AAE_TOKEN_EXPERT: ${AAE_TOKEN_EXPERT}
+      AAE_TOKEN_SENIOR: ${AAE_TOKEN_SENIOR}
+      AAE_TOKEN_VIEWER: ${AAE_TOKEN_VIEWER}
+      # The console reads the system of record on the SAME read-only
+      # credential the postcondition reader holds. It reaches it over the
+      # compose network, not the published host port.
+      AAE_WORKORDER_READER_DSN: postgresql://aae_reader:${AAE_READER_PASSWORD}@workorder-db:5432/workorders
+      # Reported on the posture panel. Booleans, not the values: the console
+      # states whether enforcement is on and pinned, and never handles the
+      # signing key.
+      AAE_TOOLSPEC_CONFIGURED: "1"
+      AAE_TOOLSPEC_PINNED: ${REMORA_TOOLSPEC_PINNED_DIGEST:+1}
 
 volumes:
   control-plane-data:

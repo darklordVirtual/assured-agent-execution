@@ -6,7 +6,7 @@
     aae scenarios                    run the four decisions end to end
     aae propose <tool> k=v ...       submit one governed call
     aae approve <review-item-id>     release a held decision (approver token)
-    aae execute <proposal-id> k=v    execute an approved proposal
+    aae execute <review-item-id> <tool> k=v ...
     aae lifecycle <proposal-id>      the ordered event trail
     aae verify-effect <proposal-id> <tool> k=v ...
     aae evidence export --out DIR [proposal-id ...]
@@ -183,13 +183,30 @@ def cmd_approve(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_execute(cfg: Config, args: argparse.Namespace) -> int:
+    """Execute an approved proposal, or redeem an ACCEPT token.
+
+    The whole tool call has to be restated, not just the arguments: the
+    approval is bound to a hash over the tool name, the exact arguments, the
+    tenant and the target environment. Restating it is what lets the server
+    detect that you are executing something other than what was approved —
+    which is the point, and the reason this command does not simply look the
+    call up by id.
+    """
+    from remora.sdk import ToolCall
+
+    call = ToolCall(tool_name=args.tool, arguments=_kv(args.args),
+                    target_environment=args.env, intent_ref=args.intent)
     with _client(cfg) as client:
-        result = (client.execute_accepted(args.proposal_id) if args.accepted
-                  else client.execute(args.proposal_id, _kv(args.args)))
+        result = (client.execute_accepted(json.loads(args.token), call)
+                  if args.accepted
+                  else client.execute(args.review_item_id, call))
     print(json.dumps({"proposal_id": result.proposal_id,
                       "outcome": result.outcome,
                       "detail": result.detail}, indent=2))
-    return EXIT_OK
+    # A refusal is an OUTCOME here, not an exception. Exiting 0 on
+    # binding_refused would let a script treat it as success — which is the
+    # exact mistake this product made in its own scenarios.
+    return EXIT_OK if result.outcome == "execute" else EXIT_FAILED
 
 
 def cmd_lifecycle(cfg: Config, args: argparse.Namespace) -> int:
@@ -266,11 +283,21 @@ def build_parser() -> argparse.ArgumentParser:
                               "senior_authority); defaults to reviewer")
     approve.set_defaults(func=cmd_approve)
 
-    execute = sub.add_parser("execute", help="execute an approved proposal")
-    execute.add_argument("proposal_id")
+    execute = sub.add_parser(
+        "execute", help="execute an approved proposal",
+        description="The approval is bound to a hash over the tool name, the "
+                    "exact arguments, the tenant and the target environment, "
+                    "so all of it must be restated here.")
+    execute.add_argument("review_item_id",
+                         help="the review item the approval released")
+    execute.add_argument("tool", help="the tool that was approved")
     execute.add_argument("args", nargs="*", metavar="key=value")
+    execute.add_argument("--intent", help="work-order id this call acts under")
+    execute.add_argument("--env", default="prod")
     execute.add_argument("--accepted", action="store_true",
                          help="redeem an ACCEPT token instead of an approval")
+    execute.add_argument("--token", default="{}",
+                         help="the execution_token JSON, with --accepted")
     execute.set_defaults(func=cmd_execute)
 
     lifecycle = sub.add_parser("lifecycle", help="the ordered event trail")

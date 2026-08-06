@@ -29,6 +29,7 @@ _SECRETS = {
     "REMORA_LEASE_SIGNING_KEY": (32, "signs execution leases"),
     "REMORA_AUDIT_SIGNING_KEY": (32, "signs tenant audit chain entries"),
     "REMORA_ENVELOPE_SIGNING_KEY": (32, "signs DecisionEnvelopes"),
+    "REMORA_TOOLSPEC_SIGNING_KEY": (32, "signs the ToolSpec bundle — the authority to call each tool"),
     "CONTROL_PLANE_DB_PASSWORD": (18, "governance state database"),
     "WORKORDER_DB_PASSWORD": (18, "system-of-record admin (migrations only)"),
     "AAE_WORKER_PASSWORD": (18, "system-of-record writer — the tool callables"),

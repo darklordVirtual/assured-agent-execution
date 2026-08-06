@@ -85,10 +85,17 @@ class Config:
     def from_env(cls) -> "Config":
         load_env_file()
         port = os.getenv("AAE_API_PORT", "8080")
-        missing = [name for name in (
-            "AAE_TOKEN_AGENT", "AAE_TOKEN_REVIEWER", "AAE_TOKEN_EXPERT",
-            "AAE_TOKEN_SENIOR", "AAE_TOKEN_VIEWER", "AAE_READER_PASSWORD",
-        ) if not os.getenv(name, "").strip()]
+        required = ["AAE_TOKEN_AGENT", "AAE_TOKEN_REVIEWER",
+                    "AAE_TOKEN_EXPERT", "AAE_TOKEN_SENIOR", "AAE_TOKEN_VIEWER"]
+        # The reader password is only needed to BUILD a DSN. A deployment that
+        # supplies the whole DSN — the console does, over the compose network —
+        # has no reason to hold the password separately, and demanding it made
+        # the console's scenario run fail on a credential it does not need.
+        explicit_reader_dsn = os.getenv("AAE_WORKORDER_READER_DSN", "").strip()
+        if not explicit_reader_dsn:
+            required.append("AAE_READER_PASSWORD")
+        missing = [name for name in required
+                   if not os.getenv(name, "").strip()]
         if missing:
             raise ConfigError(
                 f"missing configuration: {', '.join(missing)}. "
@@ -97,7 +104,7 @@ class Config:
             )
         # The reader connects from the host, so it reaches the system of
         # record through the published port rather than the compose network.
-        reader_dsn = os.getenv("AAE_WORKORDER_READER_DSN", "").strip() or (
+        reader_dsn = explicit_reader_dsn or (
             f"postgresql://aae_reader:{os.environ['AAE_READER_PASSWORD']}"
             f"@127.0.0.1:{os.getenv('AAE_WORKORDER_DB_PORT', '55432')}/workorders"
         )

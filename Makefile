@@ -18,7 +18,7 @@ VENV_PY := $(VENV)/Scripts/python.exe
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help pin env build up down logs ps verify compat e2e scenarios doctor clean
+.PHONY: help pin env sign build up down logs ps verify compat e2e scenarios doctor clean
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -38,10 +38,16 @@ deps: $(VENV_PY) pin  ## Install the SDK from the verified wheel, plus test deps
 	$(VENV_PY) -m pip install --quiet pytest "psycopg[binary]" \
 	  "$$(ls dist/remora-*.whl)[sdk]"
 
+sign: deps  ## Sign the ToolSpec bundle and pin its digest into .env
+	$(VENV_PY) scripts/sign_toolpack.py --pin-into .env
+
+check-sign: deps  ## Verify the signed bundle without re-signing it
+	$(VENV_PY) scripts/sign_toolpack.py --check
+
 build: pin  ## Build the control-plane image from the verified wheel
 	$(COMPOSE) build
 
-up: env build  ## Bring the whole stack up and wait until it is healthy
+up: env sign build  ## Sign, build and bring the whole stack up
 	$(COMPOSE) up -d
 	@echo "waiting for the control plane to report healthy..."
 	@i=0; until [ "$$($(COMPOSE) ps --format '{{.Health}}' control-plane)" = "healthy" ]; do \
