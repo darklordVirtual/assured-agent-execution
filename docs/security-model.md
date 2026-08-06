@@ -19,6 +19,9 @@ checks is a comment; a declaration presented as a control is worse.
 | Containers hold no capabilities, no writable root, bounded memory and PIDs | compose | `test_hardening.py`, against `docker inspect` |
 | Nothing is published beyond loopback | `127.0.0.1` port bindings | `test_published_ports_bind_loopback_only` |
 | The pinned core is what it claims | seven SHA-256 digests | `verify_core_pin.py`, refuses on mismatch |
+| The console cannot act | one `viewer` token, no mutating route, no REMORA package in its image | `test_console.py` |
+| The console page loads nothing third-party | `Content-Security-Policy: default-src 'self'`, and every asset self-hosted | `test_console_ui.py` |
+| Console failures disclose no internals | a sentence and a correlation id; exception text goes to the log | `test_a_failure_never_returns_exception_text` |
 
 ## Declared, not enforced
 

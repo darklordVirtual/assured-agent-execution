@@ -1,4 +1,4 @@
-# Operator console for Assured Agent Execution.
+# AAE Assurance Console — read-only.
 #
 # A separate, deliberately small image: fastapi, httpx, psycopg. No REMORA
 # wheel, no product package.
@@ -13,8 +13,8 @@
 
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="Assured Agent Execution — Operator Console" \
-      org.opencontainers.image.description="Read-mostly operator surface: deployment posture, the four decisions, and the system of record on a read-only credential. Holds no policy and makes no decisions." \
+LABEL org.opencontainers.image.title="AAE Assurance Console" \
+      org.opencontainers.image.description="Read-only assurance console: enforcement status, governed decisions and business records, on a viewer token and a SELECT-only database credential. Holds no policy, makes no decisions, and exposes no route that writes." \
       org.opencontainers.image.source="https://github.com/darklordVirtual/assured-agent-execution" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Stian Skogbrott"
@@ -30,7 +30,16 @@ RUN pip install --upgrade pip \
  && pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "httpx>=0.27" \
                 "psycopg[binary]>=3.1"
 
+# The artifact lock, and nothing else from product/. It is 30 lines of JSON
+# naming which core release this deployment verified — the console reports it
+# on the assurance surface, and reported it EMPTY once the wheel was removed
+# from this image and the file went with it.
+#
+# Copying it back does not reintroduce the REMORA dependency: it is data the
+# console reads, not a package it imports.
+COPY product/core-artifact-lock.json /console/core-artifact-lock.json
 COPY console/app.py /console/app.py
+COPY console/static /console/static
 
 RUN useradd --create-home --uid 10001 console && chown -R console:console /console
 USER console

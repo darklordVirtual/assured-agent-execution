@@ -26,6 +26,24 @@ and nothing calls it at dispatch.
 types from `remora.toolcall.*`. Pinned symbol-by-symbol so an upstream change
 fails in CI rather than in a deployment.
 
+**No way to list proposals.** The core returns a proposal when its identifier
+is known and offers no paginated listing, so the console's Decisions surface is
+a lookup rather than a feed. It cannot be reconstructed locally either: the
+business event log carries no proposal id, because the dispatcher passes none
+to the tool. Assembling a "recent decisions" list from what is available would
+mean showing a reconstruction as though it were the record.
+
+The contract this needs:
+
+```
+GET /v1/execution/proposals?limit=50&cursor=…&decision=verify&state=review_pending
+```
+
+Read access, tenant-isolated, cursor-paginated, projected from the audit chain
+rather than a second source of truth, frozen in OpenAPI and exposed as
+`list_proposals()` in the SDK. Once that is pinned in a core release, Decisions
+can show recent activity, pending attention and filtering.
+
 **No versioned migrations for the core schema.** REMORA's tables are created
 lazily at first use, so they cannot be pre-provisioned or reviewed before an
 upgrade. Only the *product's* schema is migrated here.
@@ -54,13 +72,18 @@ REMORA wheel is byte-pinned; base images are tags, not digests, and the Python
 dependencies are floors rather than a lockfile. `python run.py sbom` records
 what a given build actually contained, which is a record, not reproducibility.
 
-**The dashboard is a demonstration surface.** It is read-only and holds only
-the `viewer` token — it cannot propose, approve or execute — but it has no
-login, no CSRF protection, no rate limit and no per-user audit trail. It binds
-to loopback and is not an operator console.
+**The assurance console has no user identity.** It is read-only and holds only
+the `viewer` token — it cannot propose, approve or execute, and exposes no
+route that writes — but there is no login, no per-user audit trail and no
+authorization beyond the deployment's own network boundary. It binds to
+loopback. Anyone who can reach the port sees everything it shows.
 
 An earlier version held all five tokens and exposed an unauthenticated POST
 that ran the scenarios under approver roles. Running them is a CLI action now.
+
+**No screenshot or visual regression testing.** The console's contracts are
+asserted over HTTP and against the static files; nothing renders a browser, so
+layout and contrast are reviewed by eye rather than by CI.
 
 **No signed image, no build provenance, no external security review.** The
 pinned core is a deliberate prerelease.

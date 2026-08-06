@@ -1,55 +1,112 @@
 # Author: Stian Skogbrott
 # SPDX-License-Identifier: BUSL-1.1
-"""Operator console for Assured Agent Execution.
+"""AAE Assurance Console — a read-only view of what the deployment enforced.
 
-Deliberately a separate, tiny service that **never imports remora**. It talks
-to the control plane over HTTP exactly as any other client would, so nothing
-about the demonstration surface can change the behaviour of the system being
-demonstrated. It holds no policy and makes no decisions.
+A separate, small service that **never imports remora**. It talks to the
+control plane over HTTP exactly as any other client would, so nothing about
+the console can change the behaviour of the system it displays.
 
-It is **read-only**, and holds exactly one credential: the `viewer` token,
-whose role grants `read` and nothing else. It cannot propose, approve or
-execute, and there is no endpoint here that writes anything.
+It is read-only and holds exactly one credential: the `viewer` token, whose
+role grants `read` and nothing else. No route here writes.
 
-That was not true of the first version. It held all five tokens — including
-`domain_expert` and `senior_authority` — and exposed an unauthenticated POST
-that ran the scenarios, which perform real writes under those roles. A
-presentation surface with an approver credential is a high-value target
-wearing a low-value label.
+That was not true of the first version. It held all five bearer tokens —
+including `domain_expert` and `senior_authority` — and exposed an
+unauthenticated POST that ran the scenarios, which perform real writes under
+those roles. A presentation surface carrying an approver credential is a
+high-value target wearing a low-value label. Running the scenarios is a CLI
+action now, which is where a privileged credential belongs.
 
-Running the scenarios is a CLI action (`python run.py scenarios`), which is
-where a privileged credential belongs.
+Four surfaces:
 
-What it shows, and why each panel is on it:
+  Overview           is enforcement operational, does the audit verify, what
+                     needs attention. A console showing only activity would
+                     let a deployment look healthy while running unpinned.
+  Decisions          look up a proposal: what was decided, why, who had to
+                     approve it, and whether the effect was confirmed.
+  Business records   the work orders, on the SELECT-only credential. Seeing
+                     the change in the actual table is the difference between
+                     believing the audit trail and checking it.
+  System assurance   the technical evidence: verified engine, tool policy
+                     protection, audit integrity, credential scope.
 
-  Posture      which core is pinned, which surfaces are served, whether
-               ToolSpec enforcement is on, whether the audit chain verifies.
-               A console that only showed activity would let a deployment
-               look healthy while running unpinned and unenforced.
-  Decisions    the four, each runnable, each showing the reasons the engine
-               gave rather than a green tick.
-  System of    the work orders themselves, read on the READ-ONLY credential.
-  record       Seeing the effect in the actual table is the difference
-               between believing the audit trail and checking it.
+This module does five things and no more: fetch, validate, serve static files,
+report failure legibly, and set security headers.
 """
 from __future__ import annotations
 
 import json
 import os
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 API = os.environ.get("AAE_API_URL", "http://control-plane:8000")
+
 #: One credential, read-only. Anything this console cannot do with `viewer`
 #: is something it should not be doing.
 VIEWER_TOKEN = os.environ.get("AAE_TOKEN_VIEWER", "")
 READER_DSN = os.environ.get("AAE_WORKORDER_READER_DSN", "")
 
-app = FastAPI(title="AAE Operator Console", docs_url=None, redoc_url=None)
+STATIC = Path(__file__).parent / "static"
+LOCK_FILE = Path(__file__).parent / "core-artifact-lock.json"
 
+app = FastAPI(title="AAE Assurance Console", docs_url=None, redoc_url=None)
+
+
+# ── Security headers ───────────────────────────────────────────────────────
+
+#: Everything is served from this origin: no CDN, no inline script, no inline
+#: style, no frame, no form target. A console for a governance product should
+#: not be able to load a third party's JavaScript even by accident.
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; "
+        "base-uri 'none'; form-action 'none'")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = _CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    # This page shows governance state. A cached copy on a shared machine
+    # outlives the session that was entitled to see it.
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+# ── Failure, reported rather than leaked ───────────────────────────────────
+
+class Problem(BaseModel):
+    """A failure a person can act on, and an id they can quote.
+
+    Exception text goes to the log, never to the browser: it names internal
+    hosts, credentials and file paths, and a console is the wrong place to
+    disclose any of them.
+    """
+
+    error: str
+    correlation_id: str
+
+
+def _problem(message: str, exc: Exception | None = None,
+             status: int = 503) -> JSONResponse:
+    correlation = uuid.uuid4().hex[:12]
+    if exc is not None:
+        print(f"[{correlation}] {type(exc).__name__}: {exc}", flush=True)
+    return JSONResponse(
+        Problem(error=message, correlation_id=correlation).model_dump(),
+        status_code=status)
+
+
+# ── Upstream ───────────────────────────────────────────────────────────────
 
 def _get(path: str) -> tuple[int, Any]:
     try:
@@ -58,216 +115,267 @@ def _get(path: str) -> tuple[int, Any]:
             headers={"Authorization": f"Bearer {VIEWER_TOKEN}"})
         return response.status_code, response.json()
     except Exception as exc:  # noqa: BLE001
-        return 0, {"error": f"{type(exc).__name__}: {exc}"}
+        print(f"upstream {path}: {type(exc).__name__}: {exc}", flush=True)
+        return 0, None
 
 
-@app.get("/api/posture")
-def posture() -> JSONResponse:
-    """Everything that decides whether the activity below means anything."""
+def _lock() -> dict[str, Any]:
+    try:
+        return json.loads(LOCK_FILE.read_text(encoding="utf-8"))
+    except OSError:
+        # Reported as unknown rather than absent. A console that silently
+        # showed nothing where the verified engine belongs looks fine while
+        # telling you less than it should — which is exactly what happened
+        # when this file stopped being copied into the image.
+        return {}
+
+
+def _reader():
+    import psycopg
+    from psycopg.rows import dict_row
+
+    # autocommit: a reader has nothing to keep a transaction for, and one held
+    # open blocks pg_dump — which is how a scheduled backup hangs in silence.
+    return psycopg.connect(READER_DSN, row_factory=dict_row,
+                           connect_timeout=5, autocommit=True)
+
+
+def _clean(row: dict) -> dict:
+    return {k: (v.isoformat() if hasattr(v, "isoformat") else v)
+            for k, v in row.items()}
+
+
+# ── Models ─────────────────────────────────────────────────────────────────
+
+class CoreIdentity(BaseModel):
+    version: str | None = None
+    commit: str | None = None
+    release: str | None = None
+    status: str | None = None
+
+
+class AuditIntegrity(BaseModel):
+    checked: bool
+    verified: bool | None = None
+    records: int | None = None
+
+
+class Assurance(BaseModel):
+    """Everything that decides whether the activity elsewhere means anything."""
+
+    reachable: bool
+    runtime_mode: str | None = None
+    capabilities: list[str] = []
+    health: str | None = None
+    core: CoreIdentity = CoreIdentity()
+    tool_policy_enforced: bool = False
+    tool_policy_pinned: bool = False
+    audit: AuditIntegrity = AuditIntegrity(checked=False)
+    console_access: str = "read-only"
+    database_credential: str = "read-only"
+    checked_at: str
+
+
+class Overview(BaseModel):
+    headline: str
+    all_clear: bool
+    attention: list[str]
+    assurance: Assurance
+    records: dict[str, int]
+
+
+class WorkOrder(BaseModel):
+    wo_id: str
+    title: str
+    asset_id: str
+    status: str
+    priority: str
+    closed_reason: str | None = None
+    updated_by: str
+    updated_at: str
+
+
+class RecordEvent(BaseModel):
+    wo_id: str
+    tool_name: str
+    actor: str
+    occurred_at: str
+    detail: dict[str, Any] = {}
+
+
+class Records(BaseModel):
+    work_orders: list[WorkOrder]
+    events: list[RecordEvent]
+    open_count: int
+    closed_count: int
+
+
+# ── Assurance ──────────────────────────────────────────────────────────────
+
+def _assurance() -> Assurance:
     status, root = _get("/")
     _, health = _get("/v1/health")
     chain_status, chain = _get("/v1/execution/audit/verify")
+    lock = _lock()
 
-    lock: dict[str, Any] = {}
+    return Assurance(
+        reachable=status == 200,
+        runtime_mode=(root or {}).get("runtime_mode"),
+        capabilities=(root or {}).get("surfaces", []),
+        health=(health or {}).get("status"),
+        core=CoreIdentity(
+            version=lock.get("remora_core_version"),
+            commit=(lock.get("remora_core_commit") or "")[:8] or None,
+            release=lock.get("release_tag"),
+            status=lock.get("release_status"),
+        ),
+        tool_policy_enforced=bool(os.environ.get("AAE_TOOLSPEC_CONFIGURED")),
+        tool_policy_pinned=bool(os.environ.get("AAE_TOOLSPEC_PINNED")),
+        audit=AuditIntegrity(
+            checked=chain_status == 200,
+            verified=(chain or {}).get("valid") if chain_status == 200 else None,
+            records=((chain or {}).get("records_checked")
+                     if chain_status == 200 else None),
+        ),
+        checked_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
+
+
+@app.get("/api/assurance", response_model=Assurance)
+def assurance() -> Assurance:
+    return _assurance()
+
+
+@app.get("/api/overview", response_model=Overview)
+def overview() -> Any:
+    state = _assurance()
+
+    # Only actual deviations. A list that always has entries is a list nobody
+    # reads.
+    attention: list[str] = []
+    if not state.reachable:
+        attention.append("The control plane is not reachable.")
+    if state.runtime_mode and state.runtime_mode != "production":
+        attention.append(f"Running in {state.runtime_mode} mode: the "
+                         f"fail-closed prerequisites are not binding.")
+    if not state.tool_policy_enforced:
+        attention.append("Tool policy protection is off: tool definitions are "
+                         "not signature-checked.")
+    elif not state.tool_policy_pinned:
+        attention.append("Tool policy is signed but not pinned: a correctly "
+                         "signed older definition would be accepted.")
+    if state.audit.checked and state.audit.verified is False:
+        attention.append("Audit integrity check FAILED.")
+    if not state.audit.checked:
+        attention.append("Audit integrity could not be checked.")
+
+    counts = {"open": 0, "closed": 0, "cancelled": 0, "total": 0}
     try:
-        with open("/console/core-artifact-lock.json", encoding="utf-8") as fh:
-            lock = json.load(fh)
-    except OSError:
-        pass
-
-    toolspec = {"configured": bool(os.environ.get("AAE_TOOLSPEC_CONFIGURED")),
-                "pinned": bool(os.environ.get("AAE_TOOLSPEC_PINNED"))}
-
-    return JSONResponse({
-        "reachable": status == 200,
-        "runtime_mode": root.get("runtime_mode"),
-        "surfaces": root.get("surfaces", []),
-        "health": health.get("status"),
-        "core": {
-            "version": lock.get("remora_core_version"),
-            "commit": (lock.get("remora_core_commit") or "")[:8],
-            "release": lock.get("release_tag"),
-            "status": lock.get("release_status"),
-        },
-        "toolspec": toolspec,
-        "audit_chain": {
-            "checked": chain_status == 200,
-            "valid": chain.get("valid") if chain_status == 200 else None,
-            "records": chain.get("records_checked") if chain_status == 200 else None,
-        },
-    })
-
-
-@app.get("/api/work-orders")
-def work_orders() -> JSONResponse:
-    """The system of record, on the credential that cannot write it."""
-    if not READER_DSN:
-        return JSONResponse({"error": "no reader DSN configured"}, status_code=503)
-    try:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        with psycopg.connect(READER_DSN, row_factory=dict_row,
-                             connect_timeout=5, autocommit=True) as conn:
-            conn.read_only = True
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT wo_id, title, asset_id, status, priority,"
-                    "       closed_reason, updated_by, updated_at"
-                    "  FROM work_orders ORDER BY wo_id")
-                rows = cur.fetchall()
-                cur.execute(
-                    "SELECT wo_id, tool_name, detail, occurred_at"
-                    "  FROM work_order_events ORDER BY event_id DESC LIMIT 20")
-                events = cur.fetchall()
+        with _reader() as conn, conn.cursor() as cur:
+            cur.execute("SELECT status, count(*) AS n FROM work_orders "
+                        "GROUP BY status")
+            for row in cur.fetchall():
+                counts[row["status"]] = row["n"]
+                counts["total"] += row["n"]
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"},
-                            status_code=503)
+        print(f"records: {type(exc).__name__}: {exc}", flush=True)
+        attention.append("Business records are not reachable.")
 
-    def clean(row: dict) -> dict:
-        return {k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                for k, v in row.items()}
-
-    return JSONResponse({"work_orders": [clean(r) for r in rows],
-                         "events": [clean(r) for r in events]})
-
-
-_PAGE = """
-<title>Assured Agent Execution — Operator Console</title>
-<style>
-  :root { color-scheme: light dark; --fg:#111; --dim:#666; --line:#d8d8d8;
-          --ok:#0a7d32; --warn:#a15c00; --bad:#b3261e; --bg:#fff; --card:#fafafa; }
-  @media (prefers-color-scheme: dark) {
-    :root { --fg:#e8e8e8; --dim:#9a9a9a; --line:#333; --ok:#4ade80;
-            --warn:#fbbf24; --bad:#f87171; --bg:#111; --card:#1a1a1a; } }
-  * { box-sizing: border-box; }
-  body { font: 14px/1.55 ui-sans-serif, system-ui, sans-serif; color: var(--fg);
-         background: var(--bg); margin: 0; padding: 2rem 1.5rem; max-width: 1100px;
-         margin-inline: auto; }
-  h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
-  h2 { font-size: .95rem; text-transform: uppercase; letter-spacing: .07em;
-       color: var(--dim); margin: 2rem 0 .75rem; font-weight: 600; }
-  .sub { color: var(--dim); margin: 0 0 1.5rem; }
-  .grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(210px,1fr)); }
-  .card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem;
-          background: var(--card); }
-  .card .k { color: var(--dim); font-size: .78rem; text-transform: uppercase;
-             letter-spacing: .05em; }
-  .card .v { font-size: 1.05rem; margin-top: .2rem; font-weight: 600; }
-  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
-  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
-  th { color: var(--dim); font-weight: 600; font-size: .78rem; text-transform: uppercase;
-       letter-spacing: .05em; }
-  button { font: inherit; font-weight: 600; padding: .5rem 1.1rem; border-radius: 6px;
-           border: 1px solid var(--line); background: var(--card); color: var(--fg);
-           cursor: pointer; }
-  button:hover { border-color: var(--fg); }
-  button[disabled] { opacity: .5; cursor: progress; }
-  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-        padding: 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.5;
-        white-space: pre-wrap; }
-  .note { color: var(--dim); font-size: .84rem; border-left: 2px solid var(--line);
-          padding-left: .8rem; margin: 1rem 0; }
-  .wrap { overflow-x: auto; }
-</style>
-
-<h1>Assured Agent Execution</h1>
-<p class="sub">Operator console. Holds no policy, makes no decisions, and imports
-no REMORA module — it reads this deployment over HTTP like any other client.</p>
-
-<h2>Posture</h2>
-<div class="grid" id="posture"><div class="card"><div class="v">loading…</div></div></div>
-
-<p class="note">These are the facts that decide whether anything below means
-anything. A deployment can be busy and still be running unpinned, unenforced,
-or with a chain that no longer verifies.</p>
-
-<h2>The four decisions</h2>
-<p class="sub">Run them from a shell. This console is read-only and holds no
-credential that could approve or execute — running the scenarios needs both.</p>
-<pre>python run.py scenarios</pre>
-<p class="note">Then reload this page: the system of record below shows what
-the run actually changed.</p>
-
-<h2>System of record</h2>
-<p class="sub">Read on the <strong>read-only</strong> credential — the same one
-the postcondition reader holds. Seeing the effect in the actual table is the
-difference between believing the audit trail and checking it.</p>
-<div class="wrap"><table id="wo"><tbody><tr><td>loading…</td></tr></tbody></table></div>
-
-<h2>Recent governed writes</h2>
-<div class="wrap"><table id="events"><tbody><tr><td>loading…</td></tr></tbody></table></div>
-
-<p class="note">Read-only. This console holds one credential — the
-<code>viewer</code> role, which grants <code>read</code> and nothing else — and
-exposes no endpoint that writes. A real deployment puts an identity provider in
-front of it; this local profile does not, which is why it binds to loopback.</p>
-
-<script>
-const esc = s => String(s ?? "").replace(/[&<>]/g, c =>
-  ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-
-function card(k, v, cls) {
-  return `<div class="card"><div class="k">${esc(k)}</div>
-          <div class="v ${cls||""}">${esc(v)}</div></div>`;
-}
-
-async function loadPosture() {
-  const r = await fetch("/api/posture"); const p = await r.json();
-  const chain = p.audit_chain || {};
-  const chainCls = chain.valid === true ? "ok" : chain.valid === false ? "bad" : "warn";
-  const chainTxt = chain.valid === true ? `verified (${chain.records ?? "?"} records)`
-                 : chain.valid === false ? "DOES NOT VERIFY" : "not checked";
-  document.getElementById("posture").innerHTML = [
-    card("control plane", p.reachable ? (p.health || "ok") : "unreachable",
-         p.reachable ? "ok" : "bad"),
-    card("runtime mode", p.runtime_mode || "?",
-         p.runtime_mode === "production" ? "ok" : "warn"),
-    card("surfaces served", (p.surfaces || []).join(", ") || "?",
-         (p.surfaces||[]).includes("assess") ? "warn" : "ok"),
-    card("pinned core", `${p.core.version || "?"} @ ${p.core.commit || "?"}`, ""),
-    card("release", `${p.core.release || "?"} (${p.core.status || "?"})`,
-         p.core.status === "stable" ? "ok" : "warn"),
-    card("toolspec enforcement",
-         p.toolspec.configured ? (p.toolspec.pinned ? "signed + pinned" : "signed, NOT pinned")
-                               : "off",
-         p.toolspec.configured ? (p.toolspec.pinned ? "ok" : "warn") : "bad"),
-    card("audit chain", chainTxt, chainCls),
-  ].join("");
-}
-
-async function loadWorkOrders() {
-  const r = await fetch("/api/work-orders"); const d = await r.json();
-  if (d.error) {
-    document.getElementById("wo").innerHTML =
-      `<tbody><tr><td class="bad">${esc(d.error)}</td></tr></tbody>`;
-    return;
-  }
-  document.getElementById("wo").innerHTML =
-    `<thead><tr><th>work order</th><th>title</th><th>asset</th><th>status</th>
-     <th>priority</th><th>last written by</th></tr></thead><tbody>` +
-    d.work_orders.map(w => `<tr><td><code>${esc(w.wo_id)}</code></td>
-      <td>${esc(w.title)}</td><td>${esc(w.asset_id)}</td>
-      <td class="${w.status === "closed" ? "ok" : ""}">${esc(w.status)}</td>
-      <td>${esc(w.priority)}</td><td>${esc(w.updated_by)}</td></tr>`).join("") +
-    `</tbody>`;
-  document.getElementById("events").innerHTML = d.events.length
-    ? `<thead><tr><th>when</th><th>work order</th><th>tool</th><th>detail</th></tr></thead><tbody>` +
-      d.events.map(e => `<tr><td>${esc((e.occurred_at||"").replace("T"," ").slice(0,19))}</td>
-        <td><code>${esc(e.wo_id)}</code></td><td><code>${esc(e.tool_name)}</code></td>
-        <td>${esc(JSON.stringify(e.detail))}</td></tr>`).join("") + `</tbody>`
-    : `<tbody><tr><td>no governed write has happened yet</td></tr></tbody>`;
-}
+    all_clear = not attention
+    return Overview(
+        headline=("All enforcement controls are operational" if all_clear
+                  else f"{len(attention)} control(s) need attention"),
+        all_clear=all_clear,
+        attention=attention,
+        assurance=state,
+        records=counts,
+    )
 
 
-loadPosture(); loadWorkOrders();
-setInterval(loadWorkOrders, 15000);
-setInterval(loadPosture, 15000);
-</script>
-"""
+# ── Business records ───────────────────────────────────────────────────────
+
+@app.get("/api/records", response_model=Records)
+def records() -> Any:
+    if not READER_DSN:
+        return _problem("No database credential is configured for this console.")
+    try:
+        with _reader() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT wo_id, title, asset_id, status, priority,"
+                "       closed_reason, updated_by, updated_at"
+                "  FROM work_orders ORDER BY wo_id")
+            orders = [_clean(r) for r in cur.fetchall()]
+            cur.execute(
+                "SELECT wo_id, tool_name, actor, detail, occurred_at"
+                "  FROM work_order_events ORDER BY event_id DESC LIMIT 50")
+            events = [_clean(r) for r in cur.fetchall()]
+    except Exception as exc:  # noqa: BLE001
+        return _problem("Business records are not reachable.", exc)
+
+    return Records(
+        work_orders=[WorkOrder(**o) for o in orders],
+        events=[RecordEvent(**e) for e in events],
+        open_count=sum(1 for o in orders if o["status"] == "open"),
+        closed_count=sum(1 for o in orders if o["status"] == "closed"),
+    )
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
-    return HTMLResponse(_PAGE)
+# ── Decisions: look up a proposal ──────────────────────────────────────────
+#
+# A lookup, not a feed. The core returns a proposal when its id is known and
+# cannot yet LIST proposals, and the business event log carries no proposal id
+# because the dispatcher does not pass one to the tool. Assembling a "recent
+# decisions" list from what is available would mean showing a reconstruction
+# as though it were the record. See docs/limitations.md.
+
+def _proxy(path: str, missing: str) -> Any:
+    status, body = _get(path)
+    if status == 404:
+        return _problem(missing, status=404)
+    if status != 200:
+        return _problem("The control plane did not answer.")
+    return JSONResponse(body)
+
+
+@app.get("/api/proposals/{proposal_id}")
+def proposal(proposal_id: str) -> Any:
+    return _proxy(f"/v1/execution/proposals/{proposal_id}",
+                  f"No proposal {proposal_id}.")
+
+
+@app.get("/api/proposals/{proposal_id}/lifecycle")
+def lifecycle(proposal_id: str) -> Any:
+    return _proxy(f"/v1/execution/proposals/{proposal_id}/lifecycle",
+                  f"No lifecycle for {proposal_id}.")
+
+
+@app.get("/api/proposals/{proposal_id}/evidence")
+def evidence(proposal_id: str) -> Any:
+    return _proxy(f"/v1/execution/proposals/{proposal_id}/evidence",
+                  f"No evidence bundle for {proposal_id}.")
+
+
+# ── The old paths ──────────────────────────────────────────────────────────
+# Kept so an existing bookmark or check resolves. They carry the CURRENT
+# payload, not the old shape — a path answering with the old fields would be
+# a compatibility promise this product is not making, and the terminology
+# changed on purpose.
+
+@app.get("/api/posture", response_model=Assurance)
+def posture() -> Assurance:
+    return _assurance()
+
+
+@app.get("/api/work-orders", response_model=Records)
+def work_orders() -> Any:
+    return records()
+
+
+# ── Static ─────────────────────────────────────────────────────────────────
+
+app.mount("/assets", StaticFiles(directory=STATIC), name="assets")
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(STATIC / "index.html", media_type="text/html")

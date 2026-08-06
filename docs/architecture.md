@@ -50,8 +50,18 @@ assumed — see [limitations.md](limitations.md#parallel-declarations).
 act on. Separate so the effect reader can hold a credential that cannot write
 it. See [adr/0002-separate-reader-credential.md](adr/0002-separate-reader-credential.md).
 
-**Postcondition reader** — runs in the CLI or the dashboard, not in the
-control plane. Declares the expected delta from the approved arguments, reads
+**Assurance console** — a read-only surface over four questions: is
+enforcement operational, what was decided about a given proposal, what the
+business records say, and what technical evidence backs any of it. FastAPI
+serving typed JSON and three static files; no framework, no build step, and
+every asset from this origin under a strict Content-Security-Policy.
+
+It holds one credential — `viewer` — and exposes no route that writes.
+Decisions is a *lookup*, not a feed, because the core cannot list proposals
+and the event log carries no proposal id; see
+[limitations.md](limitations.md).
+
+**Postcondition reader** — runs in the CLI, not in the control plane. Declares the expected delta from the approved arguments, reads
 the target, compares only the declared fields.
 
 ## Data flow
