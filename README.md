@@ -1,8 +1,11 @@
 # Assured Agent Execution
 
+[![CI](https://github.com/darklordVirtual/assured-agent-execution/actions/workflows/pr.yml/badge.svg)](https://github.com/darklordVirtual/assured-agent-execution/actions/workflows/pr.yml) [![Core: REMORA, pinned](https://img.shields.io/badge/core-REMORA_pinned-6ea8fe.svg)](https://github.com/darklordVirtual/REMORA-research) [![Paper (PDF)](https://img.shields.io/badge/paper-PDF-b31b1b.svg)](https://github.com/darklordVirtual/REMORA-research/blob/master/paper/remora_paper.pdf) [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSING.md)
+
 **Controlled execution for AI-agent tool calls.**
 
-Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
+Built on [REMORA](https://github.com/darklordVirtual/REMORA-research), consumed
+as a hash-pinned release rather than a dependency on its `master`.
 
 Assured Agent Execution (AAE) governs how AI agents interact with tools and
 operational systems.
