@@ -155,8 +155,18 @@ def _env_value(key: str, default: str) -> str:
 
 
 def t_down(_args) -> None:
-    """Stop everything and remove the volumes."""
+    """Stop everything. Keeps the data."""
+    compose("down", check=False)
+
+
+def t_reset(_args) -> None:
+    """Stop everything AND destroy the volumes.
+
+    Split from `down` deliberately: `down -v` erases the audit chain, and
+    a command whose name says `stop` should not destroy evidence.
+    """
     compose("down", "-v", check=False)
+    print("volumes removed: audit chain, envelopes and work orders are gone")
 
 
 def t_logs(_args) -> None:
@@ -174,20 +184,66 @@ def t_compat(_args) -> None:
 
 
 def t_e2e(_args) -> None:
-    """End-to-end tests against the running stack."""
+    """End-to-end tests against the running stack. Must actually run.
+
+    AAE_REQUIRE_LIVE turns the conftest's skips into failures. Without it
+    this command exits 0 when the stack is down and every test skipped —
+    reporting more verification than it performed, which is the one thing
+    a verification command must never do.
+    """
     _ensure_deps()
-    run([str(VENV_PY), "-m", "pytest", "tests/e2e", "-q"])
+    import os
+
+    environment = {**os.environ, "AAE_REQUIRE_LIVE": "1"}
+    run([str(VENV_PY), "-m", "pytest", "tests/e2e", "-q"], env=environment)
+
+
+def t_check(_args) -> None:
+    """Static and contract checks. No Docker, no running stack."""
+    t_compat(None)
 
 
 def t_verify(_args) -> None:
-    """Everything: pin, contract, end to end."""
+    """Everything, against a stack that must be up."""
     t_compat(None)
     t_e2e(None)
 
 
+def t_reseed(_args) -> None:
+    """Return the reference work orders to their seeded state.
+
+    Business data only. REMORA's audit chain is deliberately untouched:
+    erasing the record of what was decided in order to make a demo repeatable
+    would defeat the product being demonstrated.
+    """
+    password = _env_value("WORKORDER_DB_PASSWORD", "")
+    if not password:
+        raise SystemExit("no .env; run `python run.py up` first")
+    # Piped on stdin, not `-f`: /migrations is mounted on the migrate
+    # service, not on the database, and adding a mount just to reseed would
+    # give the database container a path into the repository it has no other
+    # reason to hold.
+    sql = (ROOT / "db" / "workorders" / "reset_demo.sql").read_text("utf-8")
+    result = subprocess.run(
+        ["docker", "compose", "exec", "-T", "-e", f"PGPASSWORD={password}",
+         "workorder-db", "psql", "-U", "wo_admin", "-d", "workorders",
+         "-q", "-v", "ON_ERROR_STOP=1"],
+        cwd=ROOT, input=sql, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise SystemExit(f"reseed failed: {result.stderr.strip()}")
+    print("  reference work orders reset (audit chain untouched)")
+
+
 def t_scenarios(args) -> None:
-    """Run the four decisions against the running stack."""
+    """Run the four decisions against the running stack.
+
+    Reseeds first, because the scenarios genuinely mutate the system of
+    record — closing WO-1202 is the point — and a second run against the
+    leftovers is a different run. `--no-reset` keeps the accumulated state.
+    """
     _ensure_deps()
+    if not getattr(args, "no_reset", False):
+        t_reseed(None)
     cmd = [str(VENV_PY), "-m", "aae.cli", "scenarios"]
     if getattr(args, "evidence_out", None):
         cmd += ["--evidence-out", args.evidence_out]
@@ -234,7 +290,9 @@ def t_clean(_args) -> None:
 TARGETS = {
     "up": t_up, "down": t_down, "build": t_build, "pin": t_pin, "env": t_env,
     "deps": t_deps, "sign": t_sign, "check-sign": t_check_sign,
-    "verify": t_verify, "compat": t_compat, "e2e": t_e2e,
+    "check": t_check, "verify": t_verify, "compat": t_compat, "e2e": t_e2e,
+    "reseed": t_reseed,
+    "reset": t_reset,
     "scenarios": t_scenarios, "doctor": t_doctor, "logs": t_logs, "ps": t_ps,
     "backup": t_backup, "restore": t_restore, "sbom": t_sbom,
     "clean": t_clean,
@@ -251,6 +309,8 @@ def main() -> int:
                         help="scenarios: also export evidence to this directory")
     parser.add_argument("--out", help="backup: where to write the archive")
     parser.add_argument("--source", help="restore: the archive to restore")
+    parser.add_argument("--no-reset", action="store_true",
+                        help="scenarios: keep the accumulated state")
     args = parser.parse_args()
     TARGETS[args.target](args)
     return 0

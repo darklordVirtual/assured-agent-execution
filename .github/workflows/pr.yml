@@ -48,7 +48,7 @@ jobs:
           pip install -e .
 
       - name: Contract, manifest agreement and import boundary
-        run: python -m pytest tests/compatibility -q
+        run: python run.py check
 
   vertical:
     name: The product, running
@@ -72,6 +72,8 @@ jobs:
         run: python run.py scenarios
 
       - name: End-to-end, security and fault tests
+        # AAE_REQUIRE_LIVE is set by run.py: a skipped suite fails here
+        # rather than reporting green for tests that never ran.
         run: python run.py e2e
 
       - name: The signed ToolSpec bundle still verifies
@@ -96,4 +98,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: python run.py down
+        run: python run.py reset

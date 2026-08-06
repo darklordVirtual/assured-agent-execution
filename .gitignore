@@ -8,3 +8,4 @@ __pycache__/
 evidence/
 backups/
 sbom/
+toolpacks/work_order/tool_specs.signed.json

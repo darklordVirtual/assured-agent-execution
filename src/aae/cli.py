@@ -203,13 +203,22 @@ def cmd_execute(cfg: Config, args: argparse.Namespace) -> int:
         result = (client.execute_accepted(json.loads(args.token), call)
                   if args.accepted
                   else client.execute(args.review_item_id, call))
+    from aae.execution import read_verdict
+
+    verdict = read_verdict(result)
     print(json.dumps({"proposal_id": result.proposal_id,
-                      "outcome": result.outcome,
-                      "detail": result.detail}, indent=2))
-    # A refusal is an OUTCOME here, not an exception. Exiting 0 on
-    # binding_refused would let a script treat it as success — which is the
-    # exact mistake this product made in its own scenarios.
-    return EXIT_OK if result.outcome == "execute" else EXIT_FAILED
+                      "outcome": verdict.outcome,
+                      "tool_executed": verdict.executed,
+                      "refusal_reason": verdict.refusal_reason or None,
+                      "error": verdict.error or None,
+                      "detail": verdict.detail,
+                      "summary": verdict.describe()}, indent=2))
+    # Two fields, two questions. `outcome` says the governed step ran;
+    # `tool_execution.executed` says the tool acted. A refusal arrives as an
+    # OUTCOME rather than an exception, and a tool that RAISES still reports
+    # outcome="execute" with the nonce burned. Exiting 0 on either would let a
+    # script record a failed action as a completed one.
+    return EXIT_OK if verdict.acted else EXIT_FAILED
 
 
 #: Fields worth surfacing per event, in the order an operator reads them.

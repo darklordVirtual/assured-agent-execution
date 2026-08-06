@@ -84,6 +84,9 @@ class ReaderUnavailable(RuntimeError):
 class Observation:
     """What the reader saw, and whether it managed to look at all."""
 
+    #: What the reader saw. ``{}`` means it looked and the object was not
+    #: there; ``None`` means it could not look at all. The distinction is
+    #: the whole point — see ``verify``.
     fields: dict[str, Any] | None
     looked: bool
     detail: str = ""
@@ -147,7 +150,12 @@ def observe(dsn: str, spec: PostconditionSpec) -> Observation:
     if row is None:
         # We DID look, and the object is not there. That is observable and,
         # against a postcondition expecting a state, it is a mismatch.
-        return Observation(fields=None, looked=True,
+        # An EMPTY mapping, not None. We queried successfully and the row
+        # is not there — that is an observation, and against a
+        # postcondition expecting a state it is a MISMATCH. Passing None
+        # would report UNOBSERVABLE, which means we could not look, and
+        # would leave a real failed effect looking like an outage.
+        return Observation(fields={}, looked=True,
                            detail=f"work order {wo_id} does not exist")
     return Observation(fields=dict(row), looked=True)
 

@@ -1,173 +1,141 @@
 # Assured Agent Execution
 
-**An AI agent proposes an action. This decides whether it happens.**
+**A reference runtime for governing what an AI agent is allowed to do.**
 
-Every proposal gets exactly one of four answers — **ACCEPT**, **VERIFY**,
-**ABSTAIN**, **ESCALATE** — and the answer is bound to the exact payload, the
-exact tool, and a work order the agent cannot forge. After a write, a separate
-process on a read-only credential goes and checks the change actually landed.
+An agent proposes a tool call. AAE evaluates it through a pinned REMORA core,
+routes it to one of four decisions, executes what is approved, and then checks
+whether the expected effect actually occurred.
 
-Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
+```
+agent
+  │ proposes a tool call
+  ▼
+AAE ── pinned REMORA control plane
+  ├─ ACCEPT ────────────────► execute
+  ├─ VERIFY ──► human review ► execute
+  ├─ ABSTAIN ───────────────► stop
+  └─ ESCALATE ──────────────► higher authority
+                                   │
+                                   ▼
+                          verify the effect really happened
+```
+
+This repository holds the product integration, a reference ToolPack for
+maintenance work orders, and a local Docker deployment. It does **not** contain
+the REMORA research source tree — that is consumed as a hash-pinned release.
+
+## Quickstart
+
+Requires Docker, Python 3.11+ and `gh`.
 
 ```bash
 git clone https://github.com/darklordVirtual/assured-agent-execution
 cd assured-agent-execution
-python run.py up          # ~3 min: verifies the pinned core, generates keys, builds, migrates
+python run.py up
 python run.py scenarios
 ```
 
-No configuration. `run.py up` generates this installation's own signing keys,
-database passwords and bearer tokens, picks free ports, and prints the URLs.
-You need Docker, Python 3.11+, and `gh` (to fetch the pinned core release).
+Nothing to configure. `up` generates this installation's own keys, passwords
+and tokens, picks free ports, and prints the URLs.
 
-## What you'll see
+## What the reference scenario shows
 
 ```
-[PASS] ACCEPT: grounded read under signed WO-1201
-       assess → accept (grounded_read_accept)
-       execute_accepted → execute
-       replay refused → ReplayRefusedError
-
-[PASS] VERIFY: close WO-1202 under signed authority
-       assess → verify (evidence_insufficient)
-       agent token refused approval (correct)
-       domain_expert approved → approved
-       execute → execute
-       EFFECT_VERIFIED — the system of record shows the approved delta
-       record_effect → EFFECT_VERIFIED in the chain
-
-[PASS] ABSTAIN: read under an authority that does not resolve
-[PASS] ESCALATE: purge work-order history → required_role=senior_authority
-[PASS] BINDING: approve one payload, execute another → binding_refused
-[PASS] ROLES: the approver cannot execute
-
-6/6 scenarios behaved as documented
+[PASS] ACCEPT    grounded read under a signed work order → executes, token single-use
+[PASS] VERIFY    production close → held → domain_expert approves → executes
+                 → EFFECT_VERIFIED against the database, on a read-only credential
+[PASS] ABSTAIN   same read, unresolvable authority → stops
+[PASS] ESCALATE  destructive tool → required_role=senior_authority
+[PASS] BINDING   approve one payload, execute another → binding_refused
+[PASS] ROLES     the approver cannot execute
 ```
 
-The VERIFY block is the whole product. A production write was held. The agent
-that proposed it was refused the right to approve it. The identity the
-*decision* named — a domain expert, not a generic approver — released it. The
-operator executed. Then a different process, holding `SELECT` and nothing
-else, opened the database and confirmed the change was really there.
+The VERIFY line is the one to read twice. A production write was held; the
+agent that proposed it could not approve it; the identity the *decision* named
+released it; and a separate process holding `SELECT` and nothing else then
+confirmed the change was really in the database.
 
-Don't take its word for it:
+Check it yourself:
 
 ```bash
 docker compose exec workorder-db psql -U wo_admin -d workorders \
   -c "SELECT wo_id, status, updated_by FROM work_orders ORDER BY wo_id"
 ```
 
-`WO-1202` is closed, and the row names the tool that closed it.
+Then try to get past it:
+[docs/tutorials/attack-the-demo.md](docs/tutorials/attack-the-demo.md).
 
-Then open the console the run printed — usually <http://localhost:8089>.
+## How AAE relates to REMORA
 
-## Try to break it
+REMORA is the governance engine — decision semantics, audit chain, execution
+lifecycle. AAE is a **product integration and controlled execution profile**
+on top of it.
 
-```bash
-# Approve one work order, execute a different one
-aae propose set_work_order_priority wo_id=WO-1203 priority=high --intent WO-1203
-aae approve <review_item_id>
-aae execute <review_item_id> set_work_order_priority wo_id=WO-1201 priority=high --intent WO-1203
-#  → binding_refused: tool-call hash differs from the approved payload
-
-# Act under a work order nobody issued
-aae propose read_work_order wo_id=WO-1201 --intent WO-9999 --env staging
-#  → abstain   (identical tool, arguments and risk tier as the ACCEPT above)
-
-# Edit the signed ToolSpec bundle, then ask it to verify
-python run.py check-sign
-#  → toolspec_signature_invalid: its content changed after signing
-```
-
-Then ask what happened to any proposal:
+AAE owns the deployment profile, the pin regime, the ToolPack, the CLI, the
+postcondition reader, the evidence export and the demo dashboard. The control
+plane itself is REMORA's API, installed from a wheel whose SHA-256 — along with
+six other artifacts — is verified before anything trusts it:
 
 ```bash
-aae lifecycle <proposal-id>
-```
-```
-proposal 194fd239-0d01-419d-9350-0574fab190c9
-state    ASSESSED
-
-  #235  assessed → accept (grounded_read_accept)
-        tool      read_work_order
-        target    staging
-        actor     cred-a0c954378408
-        toolspec  ac53494d…
-        authority d51f3c4a…
-        payload   a75ba66b…
-        chain     4e48948b…
+python scripts/verify_core_pin.py --out dist   # refuses on any mismatch
 ```
 
-Which signed ToolSpec authorized it, which work order it acted under, the hash
-the approval is welded to, and its position in the tamper-evident chain.
-`--json` gives the unabridged record.
+## Repository layout
 
-`aae` lives in the venv `run.py up` created; `python -m aae.cli` works without
-activating it.
+```
+src/aae/       product code: CLI, config, verification, evidence
+toolpacks/     the work-order reference ToolPack
+db/            the reference system-of-record schema
+docker/        images; docker-compose.yml is the local deployment
+product/       the pinned REMORA artifact lock and release manifest
+console/       local demonstration dashboard — not an operator console
+tests/         contract, end-to-end, security, fault
+```
 
-`python run.py verify` runs all 176 tests. Among them,
-`tests/e2e/test_toolspec.py` attacks the bundle this deployment is actually
-running — six tamper shapes, a revoked signer, and a correctly-signed *older*
-bundle. Every signature check passes on that last one, because it really was
-signed here. Only the pinned digest refuses it.
+## Commands
 
-## What each boundary buys
-
-| Boundary | What it prevents |
-|---|---|
-| Risk tiers live in a data file, hashed into REMORA's policy identity | A tool cannot classify itself, and relabelling one invalidates every execution lease issued before the relabel |
-| Work-order authority is resolved **server-side** | The agent names which authority it acts under; it can never assert that the authority exists or says what it claims |
-| The ToolSpec bundle is signed, and its digest pinned | Argument schemas, allowed targets and credential scopes cannot be edited by the thing they constrain — and a signature proves authenticity, never currency |
-| Approval is bound to the exact tool-call hash | Getting a yes for one payload and executing another. The realistic attack is never "bypass the human" |
-| Five roles, none of them `admin` | One credential that can both approve and execute makes every other control decorative |
-| The effect reader holds `SELECT` and nothing else | A verifier that could write the state it verifies is reporting on itself |
-| Containers drop **all** capabilities, run read-only, refuse privilege escalation, and publish on loopback only | A compromise that cannot persist across a restart, cannot escalate, and was never on the LAN to begin with |
-| Backups carry both databases and the signed bundle — and **never** the signing keys | An archive holding the chain *and* the key that signs it lets its holder forge a history that verifies perfectly |
-| `UNOBSERVABLE` and `VERIFIER_FAILED` are non-terminal; only `MISMATCH` is | "We could not look" is not "it was wrong" — one closes incidents that are still open, the other opens incidents for actions that succeeded |
-
-[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) explains the design, and names the
-test that checks each claim.
-
-## The dependency direction
-
-The control plane **is** REMORA's governance API, installed from a
-hash-verified wheel and run as a service. No REMORA checkout, no submodule.
-Running a package is not importing one: no file here may import
-`remora.policy`, `remora.enforcement`, `remora.governance` or `servers`, and a
-test scans every source file to make sure none does.
-
-Seven artifacts are pinned by SHA-256 — the wheel, the release manifest, the
-OpenAPI document, the SDK surface, and three frozen contracts.
-`scripts/verify_core_pin.py` refuses on any mismatch, because a pin nobody
-verifies is a comment rather than a control.
+```bash
+python run.py up | down | reset     # start · stop · stop and destroy volumes
+python run.py check                 # contract tests, no Docker needed
+python run.py verify                # everything, against a stack that must be up
+python run.py scenarios             # the four decisions
+python run.py sign | check-sign     # the signed ToolSpec bundle
+python run.py backup | restore      # both databases and the bundle
+python run.py sbom                  # what is inside the images
+python run.py doctor                # what is pinned, served, reachable
+```
 
 ## Maturity
 
-Version `0.1.0-dev`. It installs, runs, and proves the claims above on one
-command. It is **not** production-ready:
+**Local reference vertical.** It demonstrates pinned-core consumption,
+role-separated approval and execution, signed ToolSpecs and effect
+verification. It is not production-hardened and has had no external security
+review.
 
-- A fully grounded *medium*-risk write falls through to ABSTAIN with no review
-  item and no path an approver could take. Declaring a risk tier currently
-  leaves a tool worse off than leaving it unknown. Open upstream.
-- `callable_digest` is signed and true, but REMORA 0.10.0 records it without
-  checking it at dispatch.
-- ToolSpec signing is HMAC, so the process that verifies holds the key that
-  signs. Asymmetric signing is deferred to v2 upstream.
-- Tools run inside the control-plane process. The credential separation is at
-  the database, not at a process boundary.
-- No external security review, no OIDC, no signed image, and no build
-  provenance. `python run.py sbom` inventories the Python tree in each
-  image and says plainly what it leaves out. The pinned core is a
-  deliberate prerelease.
+[docs/limitations.md](docs/limitations.md) lists the known gaps and is kept
+current. The short version: tools run inside the control-plane process,
+ToolSpec signing is symmetric, there is no OIDC, and a fully grounded
+medium-risk write currently abstains with no path forward — an open issue in
+the core.
 
-AAE does not claim agents are always correct, that all tools can be
+AAE does not claim that agents are always correct, that all tools can be
 effect-verified, that safety is guaranteed, or that bypass is impossible when
 an agent keeps direct tool credentials.
 
+## Documentation
+
+| | |
+|---|---|
+| [architecture.md](docs/architecture.md) | components, data flow, boundaries |
+| [security-model.md](docs/security-model.md) | what is enforced, and by what |
+| [limitations.md](docs/limitations.md) | known gaps |
+| [operations.md](docs/operations.md) | signing, backup, evidence, upgrades |
+| [tutorials/attack-the-demo.md](docs/tutorials/attack-the-demo.md) | try to get past the controls |
+| [adr/](docs/adr/) | why the architecture is the way it is |
+
 ## License
 
-Source-available under Business Source License 1.1; commercial production use
-needs separate written terms. See [LICENSING.md](LICENSING.md).
+Business Source License 1.1. Commercial production use beyond the Additional
+Use Grant needs separate written terms — see [LICENSING.md](LICENSING.md).
 
-The pinned REMORA core is a **separate** Licensed Work — an AAE license grants
-nothing in REMORA, and vice versa. A deployment runs both.
+The pinned REMORA core is a separate Licensed Work under the same licensor.

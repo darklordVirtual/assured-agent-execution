@@ -107,10 +107,19 @@ def record_event(
 ) -> None:
     """Append the product's own record of a governed write.
 
-    Kept alongside REMORA's audit chain rather than instead of it. Two
-    independent records that agree are worth more than one; two that disagree
-    is a finding an operator can act on, where a single record that cannot be
-    cross-checked is only a claim.
+    Kept alongside REMORA's audit chain rather than instead of it.
+
+    **It carries no proposal or execution id, and cannot yet.** REMORA's
+    dispatcher invokes a tool as ``fn(arguments)`` — the callable is never
+    told which proposal authorized it. So correlation between this log and
+    the audit chain is by work order, tool name, actor and time, which is
+    useful and is NOT the unambiguous join a shared id would give.
+
+    The columns exist and stay NULL deliberately: an unfilled column is a
+    visible gap, where dropping them would hide one. Closing this needs an
+    execution context from the dispatcher, which is upstream work — a tool
+    that chose its own correlation ids would be attesting to its own
+    provenance.
     """
     from psycopg.types.json import Jsonb
 

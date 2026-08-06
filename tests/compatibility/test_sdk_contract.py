@@ -172,6 +172,10 @@ def test_no_product_source_imports_an_internal_remora_namespace() -> None:
             if _INTERNAL.search(path.read_text(encoding="utf-8")):
                 offenders.append(str(path.relative_to(ROOT)))
     assert not offenders, (
-        "product code may only import remora.sdk; these reach into REMORA "
-        f"internals: {offenders}"
+        "no product file may import a namespace the lock classifies as a "
+        f"REMORA internal; these do: {offenders}. (One quarantined "
+        "exception is declared and tested separately: "
+        "toolpacks/work_order/bundle.py imports remora.toolcall.* for "
+        "ToolPack authoring, because remora.sdk offers no equivalent — "
+        "see test_toolpack_authoring_surface.py.)"
     )

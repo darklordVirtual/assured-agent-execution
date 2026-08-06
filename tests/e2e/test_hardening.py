@@ -73,15 +73,17 @@ def test_the_application_containers_run_read_only(service: str) -> None:
         f"{service} has a writable root filesystem")
 
 
-@pytest.mark.parametrize("service", _SERVICES)
+#: The images this product builds. The two postgres containers are excluded
+#: from the non-root check because their entrypoint starts as root and drops
+#: to the postgres user itself — the capability set above is what bounds them.
+#: Excluded here rather than skipped at runtime, so the exemption is visible
+#: in the source instead of appearing as an unexplained "2 skipped".
+_OWN_IMAGES = ("control-plane", "console")
+
+
+@pytest.mark.parametrize("service", _OWN_IMAGES)
 def test_no_container_runs_as_root(service: str) -> None:
-    config = _inspect(service)["Config"]
-    user = (config.get("User") or "").strip()
-    # Postgres' entrypoint starts as root and drops to the postgres user; the
-    # capability set above is what bounds it. The application images declare a
-    # non-root user outright.
-    if service.endswith("-db"):
-        pytest.skip("postgres drops privileges in its own entrypoint")
+    user = (_inspect(service)["Config"].get("User") or "").strip()
     assert user and user != "root" and not user.startswith("0"), (
         f"{service} runs as {user or 'root'}")
 

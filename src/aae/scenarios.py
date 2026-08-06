@@ -19,6 +19,7 @@ from remora.sdk import AuthorizationError, DecisionAction, RemoraClient, ToolCal
 
 from aae import postcondition
 from aae.config import Config
+from aae.execution import read_verdict
 
 
 @dataclass
@@ -140,7 +141,13 @@ def verify(cfg: Config, agent: RemoraClient) -> Outcome:
     run.step(f"{role} approved → {approval.status}")
 
     executed = agent.execute(result.review_item_id, call)
-    run.step(f"execute → {executed.outcome}")
+    verdict = read_verdict(executed)
+    run.step(f"execute → {verdict.describe()}")
+    # A close that did not close must not reach effect verification: the
+    # postcondition would read a work order closed by an EARLIER run and
+    # report EFFECT_VERIFIED for an action that failed.
+    if not verdict.acted:
+        return run.failed(f"the tool did not act: {verdict.describe()}")
 
     # Effect verification, on a credential that cannot write.
     view = postcondition.verify(

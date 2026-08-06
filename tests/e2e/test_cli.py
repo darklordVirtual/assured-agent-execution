@@ -92,15 +92,22 @@ def test_lifecycle_json_keeps_the_full_record(capsys) -> None:
 
 # ── verify-effect ──────────────────────────────────────────────────────────
 
-def test_verify_effect_reports_a_verified_effect(capsys) -> None:
+def test_verify_effect_reports_a_verified_effect(seeded, capsys) -> None:
+    """WO-1150, which the seed data closes — not a work order some other
+    scenario happened to close first.
+
+    An earlier version used WO-1202 and passed only when a scenario had run
+    before it. That is a test whose result depends on execution order, which
+    is a test that will eventually lie in one direction or the other.
+    """
     proposal = _propose(capsys)
     code, out = _run(capsys, "verify-effect", proposal["proposal_id"],
-                     "close_work_order", "wo_id=WO-1202", "--no-record")
+                     "close_work_order", "wo_id=WO-1150", "--no-record")
     assert code == cli.EXIT_OK
     assert "EFFECT_VERIFIED" in out
 
 
-def test_verify_effect_exits_nonzero_only_on_a_mismatch(capsys) -> None:
+def test_verify_effect_exits_nonzero_only_on_a_mismatch(seeded, capsys) -> None:
     """The exit code is the contract a CI job branches on.
 
     Only MISMATCH means "we looked and it was wrong". The unknowns must exit

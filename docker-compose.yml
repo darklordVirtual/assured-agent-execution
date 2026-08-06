@@ -14,7 +14,7 @@
 # REMORA_ENABLED_SURFACES=execution unmounts the oracle-backed research API, so
 # this runs with no model key and no network egress.
 #
-# See docs/HOW-IT-WORKS.md for why each boundary is where it is.
+# See docs/architecture.md for why each boundary is where it is.
 
 name: aae
 
