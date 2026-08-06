@@ -211,9 +211,10 @@ services:
     mem_limit: 1g
     pids_limit: 256
 
-  # ── Operator console ────────────────────────────────────────────────
-  # Imports no REMORA module, holds no policy. Shells out to the product
-  # CLI for the scenarios rather than keeping its own copy.
+  # ── Demonstration dashboard ─────────────────────────────────────────
+  # Read-only. Imports no REMORA module, holds no policy, and exposes no
+  # endpoint that writes. Not an operator console: no login, no CSRF
+  # protection, no per-user audit trail. Bound to loopback.
   console:
     build:
       context: .
@@ -224,10 +225,11 @@ services:
       - "127.0.0.1:${AAE_CONSOLE_PORT:-8089}:8090"
     environment:
       AAE_API_URL: http://control-plane:8000
-      AAE_TOKEN_AGENT: ${AAE_TOKEN_AGENT}
-      AAE_TOKEN_REVIEWER: ${AAE_TOKEN_REVIEWER}
-      AAE_TOKEN_EXPERT: ${AAE_TOKEN_EXPERT}
-      AAE_TOKEN_SENIOR: ${AAE_TOKEN_SENIOR}
+      # ONE credential, read-only. The console held all five — including
+      # domain_expert and senior_authority — to run the scenarios. A
+      # presentation surface with an approver credential is a high-value
+      # target wearing a low-value label. Running the scenarios is a CLI
+      # action now.
       AAE_TOKEN_VIEWER: ${AAE_TOKEN_VIEWER}
       # Same read-only credential the postcondition reader holds.
       AAE_WORKORDER_READER_DSN: postgresql://aae_reader:${AAE_READER_PASSWORD}@workorder-db:5432/workorders

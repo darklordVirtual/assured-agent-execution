@@ -54,10 +54,13 @@ REMORA wheel is byte-pinned; base images are tags, not digests, and the Python
 dependencies are floors rather than a lockfile. `python run.py sbom` records
 what a given build actually contained, which is a record, not reproducibility.
 
-**The dashboard is a demonstration surface.** It has no login, no CSRF
-protection and no rate limit, and its scenario endpoint mutates state. It is
-bound to loopback and holds the demo tokens. It is not an operator console and
-must not be exposed.
+**The dashboard is a demonstration surface.** It is read-only and holds only
+the `viewer` token — it cannot propose, approve or execute — but it has no
+login, no CSRF protection, no rate limit and no per-user audit trail. It binds
+to loopback and is not an operator console.
+
+An earlier version held all five tokens and exposed an unauthenticated POST
+that ran the scenarios under approver roles. Running them is a CLI action now.
 
 **No signed image, no build provenance, no external security review.** The
 pinned core is a deliberate prerelease.

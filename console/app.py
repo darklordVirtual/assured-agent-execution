@@ -7,9 +7,18 @@ to the control plane over HTTP exactly as any other client would, so nothing
 about the demonstration surface can change the behaviour of the system being
 demonstrated. It holds no policy and makes no decisions.
 
-It holds the demo bearer tokens because this is a local product install. A
-real deployment puts an identity provider here instead, and the page says so
-rather than leaving you to assume otherwise.
+It is **read-only**, and holds exactly one credential: the `viewer` token,
+whose role grants `read` and nothing else. It cannot propose, approve or
+execute, and there is no endpoint here that writes anything.
+
+That was not true of the first version. It held all five tokens — including
+`domain_expert` and `senior_authority` — and exposed an unauthenticated POST
+that ran the scenarios, which perform real writes under those roles. A
+presentation surface with an approver credential is a high-value target
+wearing a low-value label.
+
+Running the scenarios is a CLI action (`python run.py scenarios`), which is
+where a privileged credential belongs.
 
 What it shows, and why each panel is on it:
 
@@ -27,8 +36,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 from typing import Any
 
 import httpx
@@ -36,19 +43,19 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 API = os.environ.get("AAE_API_URL", "http://control-plane:8000")
-TOKENS = {
-    "operator": os.environ.get("AAE_TOKEN_AGENT", ""),
-    "viewer": os.environ.get("AAE_TOKEN_VIEWER", ""),
-}
+#: One credential, read-only. Anything this console cannot do with `viewer`
+#: is something it should not be doing.
+VIEWER_TOKEN = os.environ.get("AAE_TOKEN_VIEWER", "")
 READER_DSN = os.environ.get("AAE_WORKORDER_READER_DSN", "")
 
 app = FastAPI(title="AAE Operator Console", docs_url=None, redoc_url=None)
 
 
-def _get(path: str, role: str = "viewer") -> tuple[int, Any]:
+def _get(path: str) -> tuple[int, Any]:
     try:
-        response = httpx.get(f"{API}{path}", timeout=15,
-                             headers={"Authorization": f"Bearer {TOKENS[role]}"})
+        response = httpx.get(
+            f"{API}{path}", timeout=15,
+            headers={"Authorization": f"Bearer {VIEWER_TOKEN}"})
         return response.status_code, response.json()
     except Exception as exc:  # noqa: BLE001
         return 0, {"error": f"{type(exc).__name__}: {exc}"}
@@ -59,7 +66,7 @@ def posture() -> JSONResponse:
     """Everything that decides whether the activity below means anything."""
     status, root = _get("/")
     _, health = _get("/v1/health")
-    chain_status, chain = _get("/v1/execution/audit/verify", role="operator")
+    chain_status, chain = _get("/v1/execution/audit/verify")
 
     lock: dict[str, Any] = {}
     try:
@@ -125,27 +132,6 @@ def work_orders() -> JSONResponse:
                          "events": [clean(r) for r in events]})
 
 
-@app.post("/api/scenarios")
-def run_scenarios() -> JSONResponse:
-    """Run the same scenarios `aae scenarios` runs.
-
-    Shells out to the product CLI rather than reimplementing them. A console
-    with its own copy of the scenarios could show green while the CLI showed
-    red, and then nobody would know which one described the product.
-    """
-    try:
-        completed = subprocess.run(
-            [sys.executable, "-m", "aae.cli", "scenarios"],
-            capture_output=True, text=True, timeout=180)
-    except subprocess.TimeoutExpired:
-        return JSONResponse({"error": "scenario run exceeded 180s"},
-                            status_code=504)
-    return JSONResponse({
-        "exit_code": completed.returncode,
-        "output": completed.stdout or completed.stderr,
-    })
-
-
 _PAGE = """
 <title>Assured Agent Execution — Operator Console</title>
 <style>
@@ -198,10 +184,11 @@ anything. A deployment can be busy and still be running unpinned, unenforced,
 or with a chain that no longer verifies.</p>
 
 <h2>The four decisions</h2>
-<p class="sub">Runs exactly what <code>aae scenarios</code> runs — the console
-does not keep its own copy, so it cannot show green while the CLI shows red.</p>
-<button id="run" onclick="runScenarios()">Run scenarios</button>
-<pre id="scenarios" style="margin-top:1rem">not run yet</pre>
+<p class="sub">Run them from a shell. This console is read-only and holds no
+credential that could approve or execute — running the scenarios needs both.</p>
+<pre>python run.py scenarios</pre>
+<p class="note">Then reload this page: the system of record below shows what
+the run actually changed.</p>
 
 <h2>System of record</h2>
 <p class="sub">Read on the <strong>read-only</strong> credential — the same one
@@ -212,9 +199,10 @@ difference between believing the audit trail and checking it.</p>
 <h2>Recent governed writes</h2>
 <div class="wrap"><table id="events"><tbody><tr><td>loading…</td></tr></tbody></table></div>
 
-<p class="note">This console holds the deployment's bearer tokens because it is
-a local product install. A real deployment puts an identity provider here and
-these tokens do not exist.</p>
+<p class="note">Read-only. This console holds one credential — the
+<code>viewer</code> role, which grants <code>read</code> and nothing else — and
+exposes no endpoint that writes. A real deployment puts an identity provider in
+front of it; this local profile does not, which is why it binds to loopback.</p>
 
 <script>
 const esc = s => String(s ?? "").replace(/[&<>]/g, c =>
@@ -272,20 +260,9 @@ async function loadWorkOrders() {
     : `<tbody><tr><td>no governed write has happened yet</td></tr></tbody>`;
 }
 
-async function runScenarios() {
-  const btn = document.getElementById("run");
-  const out = document.getElementById("scenarios");
-  btn.disabled = true; out.textContent = "running…";
-  try {
-    const r = await fetch("/api/scenarios", {method: "POST"});
-    const d = await r.json();
-    out.textContent = d.output || d.error || "(no output)";
-  } catch (e) { out.textContent = String(e); }
-  btn.disabled = false;
-  loadWorkOrders(); loadPosture();
-}
 
 loadPosture(); loadWorkOrders();
+setInterval(loadWorkOrders, 15000);
 setInterval(loadPosture, 15000);
 </script>
 """
