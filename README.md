@@ -166,6 +166,13 @@ python run.py reset       # Stop and remove all volumes
 * [Attack the demo](docs/tutorials/attack-the-demo.md) — try to get past the controls
 * [Decision records](docs/adr/) — why the architecture is the way it is
 
+## Security
+
+Report suspected vulnerabilities to support@luftfiber.no rather than in a
+public issue. [SECURITY.md](SECURITY.md) states the scope;
+[docs/security-model.md](docs/security-model.md) states control by control
+what is enforced and what is only declared.
+
 ## Non-claims
 
 AAE does not claim that agents are always correct, that all tools can be
