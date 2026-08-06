@@ -29,9 +29,9 @@
 
 **Control plane** — REMORA's `servers.api`, run from the pinned wheel. AAE
 supplies the configuration, the ToolPack and the deployment profile; it does
-not reimplement decision semantics. See
-[adr/0001-pinned-remora-artifacts.md](adr/0001-pinned-remora-artifacts.md) and
-[adr/0004-control-plane-boundary.md](adr/0004-control-plane-boundary.md).
+not reimplement decision semantics. What is pinned and how it is verified: [pinned-core.md](pinned-core.md). Why
+it is done this way: [adr/0001](adr/0001-pinned-remora-artifacts.md) and
+[adr/0004](adr/0004-control-plane-boundary.md).
 
 **ToolPack** — everything specific to this integration. Four declarations,
 split because they are owned differently:

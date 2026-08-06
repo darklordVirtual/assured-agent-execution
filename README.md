@@ -4,8 +4,7 @@
 
 **Controlled execution for AI-agent tool calls.**
 
-Built on [REMORA](https://github.com/darklordVirtual/REMORA-research), consumed
-as a hash-pinned release rather than a dependency on its `master`.
+Powered by [REMORA](https://github.com/darklordVirtual/REMORA-research).
 
 Assured Agent Execution (AAE) governs how AI agents interact with tools and
 operational systems.
@@ -112,23 +111,12 @@ To try to get past these controls yourself, see
 
 ## REMORA integration
 
-AAE consumes a versioned REMORA release through pinned artifacts:
+AAE runs REMORA's governance engine, consumed as a fixed set of released
+artifacts rather than from its main branch. Every artifact is verified before
+anything uses it, and the install refuses on a mismatch.
 
-* REMORA wheel
-* release manifest
-* OpenAPI specification
-* public SDK contract
-* execution lifecycle schema
-* ToolSpec schema
-* postcondition schema
-
-The active release is defined in:
-
-```text
-product/core-artifact-lock.json
-```
-
-Every artifact is verified before installation and use.
+Which artifacts, the current values, and how to move to a newer release:
+[The pinned core](docs/pinned-core.md).
 
 ## Repository structure
 
@@ -163,6 +151,7 @@ python run.py reset       # Stop and remove all volumes
 ## Documentation
 
 * [Architecture](docs/architecture.md) — components, data flow and boundaries
+* [The pinned core](docs/pinned-core.md) — what is pinned, and how it is verified
 * [Security model](docs/security-model.md) — what is enforced, and by what
 * [Limitations](docs/limitations.md) — known gaps
 * [Operations](docs/operations.md) — signing, backup, evidence and upgrades
