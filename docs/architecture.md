@@ -50,16 +50,43 @@ assumed — see [limitations.md](limitations.md#parallel-declarations).
 act on. Separate so the effect reader can hold a credential that cannot write
 it. See [adr/0002-separate-reader-credential.md](adr/0002-separate-reader-credential.md).
 
-**Assurance console** — a read-only surface over four questions: is
-enforcement operational, what was decided about a given proposal, what the
-business records say, and what technical evidence backs any of it. FastAPI
-serving typed JSON and three static files; no framework, no build step, and
-every asset from this origin under a strict Content-Security-Policy.
+**Assurance console** — a read-only surface answering one question in three
+parts: what has the agent been trying to do, what did the controls do about
+it, and can any of that be relied on. FastAPI serving typed JSON and three
+static files; no framework, no build step, and every asset from this origin
+under a strict Content-Security-Policy.
 
-It holds one credential — `viewer` — and exposes no route that writes.
-Decisions is a *lookup*, not a feed, because the core cannot list proposals
-and the event log carries no proposal id; see
-[limitations.md](limitations.md).
+The **Ledger** reads the signed audit chain directly, so it shows the
+governance record rather than a summary of it, and can be filtered to the
+entries where a control actually refused something. **Records** shows the
+system of record. The **assurance strip** — engine, mode, tool policy, chain
+integrity — sits in the masthead on every screen, because it qualifies
+everything else: it was a separate page until it became clear an operator
+could read activity all day without ever visiting it.
+
+The console holds one bearer token (`viewer`) and two database credentials,
+both `SELECT`-only: one on the system of record, one on the governance chain
+([`db/controlplane/001_chain_reader.sql`](../db/controlplane/001_chain_reader.sql)).
+It exposes no route that writes. A presentation surface able to write the
+audit chain could rewrite the evidence it exists to display.
+
+**Lab** — a demonstration and test surface, and the only container that can
+act. Compose a governed tool call, choose which role submits it, and read the
+whole decision envelope: the grounding signals, the anchors the decision was
+computed against, the signed ToolSpec that authorised it, the resolution plan,
+and the chain position. It also runs the [benchmark suites](benchmarks.md).
+
+It holds every role token and has no login, which is exactly what a real
+deployment must not do — and why it is a separate service, on its own image and
+port, rather than a tab in the console. That separation is what keeps the
+console's report about itself worth reading: a process that can approve its own
+proposals cannot credibly say `console_access: read-only`.
+
+Choosing a role in the lab selects which credential is presented; it grants
+nothing. The control plane enforces role separation against the lab exactly as
+against any other client, and `test_lab.py` proves it by having the operator
+try to approve its own proposal and asserting the refusal comes back in the
+engine's words.
 
 **Postcondition reader** — runs in the CLI, not in the control plane. Declares the expected delta from the approved arguments, reads
 the target, compares only the declared fields.

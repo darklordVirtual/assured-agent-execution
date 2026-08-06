@@ -74,6 +74,7 @@ cd assured-agent-execution
 
 python run.py up
 python run.py scenarios
+python run.py bench
 ```
 
 `python run.py up`:
@@ -83,9 +84,15 @@ python run.py scenarios
 3. signs the ToolPack;
 4. builds the containers;
 5. applies the database migrations;
-6. starts the control plane and the assurance console.
+6. starts the control plane, the assurance console and the lab.
 
-The API and console URLs are printed when startup completes.
+Three URLs are printed when startup completes:
+
+| | What it is |
+|---|---|
+| **API** | the governance API an agent calls |
+| **Console** | read-only assurance: what was decided, what the controls stopped, and whether any of it can be relied on. One viewer token, no route that writes |
+| **Lab** | compose a call, act in any role, read the whole decision envelope, run the benchmarks. Holds every role token and has no login — a demonstration surface, deliberately separate from the console |
 
 ## Reference scenarios
 
@@ -124,7 +131,8 @@ Which artifacts, the current values, and how to move to a newer release:
 src/aae/                  CLI, configuration, evidence and verification
 toolpacks/work_order/     Reference ToolPack
 db/workorders/            Example system-of-record schema
-console/                  Read-only assurance console
+console/                  Assurance console (read-only) and lab (can act)
+benchmarks/               Scenarios, sealed answer keys
 docker/                   Container definitions
 product/                  Pinned REMORA artifacts and metadata
 tests/compatibility/      Core compatibility tests
@@ -137,6 +145,7 @@ docs/                     Architecture, security model and operations
 ```bash
 python run.py up          # Start the stack
 python run.py scenarios   # Run the reference scenarios
+python run.py bench       # Score the decisions against a sealed key
 python run.py doctor      # Inspect the deployment
 python run.py check-sign  # Verify the ToolPack
 python run.py check       # Contract tests, no Docker required
@@ -152,6 +161,8 @@ python run.py reset       # Stop and remove all volumes
 
 * [Architecture](docs/architecture.md) — components, data flow and boundaries
 * [The pinned core](docs/pinned-core.md) — what is pinned, and how it is verified
+* [Benchmarks](docs/benchmarks.md) — blind scoring against a sealed key, and the audit trail
+* [Build on this](docs/onboarding.md) — adding your own tools, from clone to first governed call
 * [Security model](docs/security-model.md) — what is enforced, and by what
 * [Limitations](docs/limitations.md) — known gaps
 * [Operations](docs/operations.md) — signing, backup, evidence and upgrades

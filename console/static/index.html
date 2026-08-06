@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,94 +11,104 @@
 
 <a class="skip" href="#surface">Skip to content</a>
 
-<header class="shell-head">
-  <div class="brand">
-    <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name">Assured Agent Execution</span>
-    <span class="chip chip-quiet" title="This console cannot propose, approve or execute">Read-only</span>
+<!--
+  The assurance strip is a header, not a page. It qualifies everything below
+  it: if the engine is unpinned or the chain does not verify, nothing on the
+  other surfaces can be relied on. Making that a separate destination meant an
+  operator could read the ledger all day without ever seeing it.
+-->
+<header class="masthead">
+  <div class="masthead-row">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Assured Agent Execution</span>
+    </div>
+    <div class="masthead-right">
+      <span class="chip chip-readonly"
+            title="This console holds one viewer token and no route here writes">Read-only</span>
+      <span id="updated" class="stamp">Loading…</span>
+    </div>
   </div>
-  <div class="head-meta">
-    <span id="updated" class="muted">Loading…</span>
+
+  <div id="strip" class="strip" aria-label="System assurance">
+    <span class="strip-loading">Checking enforcement controls…</span>
   </div>
 </header>
 
 <div class="shell">
   <nav class="nav" aria-label="Sections">
-    <button class="nav-item is-active" data-surface="overview" aria-current="page">Overview</button>
-    <button class="nav-item" data-surface="decisions">Decisions</button>
-    <button class="nav-item" data-surface="records">Business records</button>
-    <button class="nav-item" data-surface="assurance">System assurance</button>
+    <button class="nav-item is-active" data-surface="ledger" aria-current="page">
+      Ledger<span class="nav-count" id="nav-ledger-count"></span>
+    </button>
+    <button class="nav-item" data-surface="records">Records</button>
+    <button class="nav-item" data-surface="assurance">Assurance</button>
   </nav>
 
   <main id="surface" class="surface" tabindex="-1">
 
-    <!-- ── Overview ─────────────────────────────────────────────────── -->
-    <section id="s-overview" class="panel">
-      <div id="status-banner" class="banner banner-loading">
-        <span class="banner-icon" aria-hidden="true">…</span>
-        <div>
-          <p class="banner-title">Checking enforcement controls</p>
-          <p class="banner-sub" id="status-sub"></p>
+    <!-- ── Ledger ───────────────────────────────────────────────────── -->
+    <section id="s-ledger" class="panel">
+      <div id="attention" class="attention" hidden></div>
+
+      <header class="panel-head">
+        <h1>Governance ledger</h1>
+        <p class="lede">
+          Every decision this deployment made, read from the signed audit
+          chain. Not a summary of it — the chain itself, newest first.
+        </p>
+      </header>
+
+      <!--
+        The distribution, not four stat cards. How the decisions divide is the
+        question worth asking of an autonomous agent: mostly accept means it is
+        acting on its own, mostly escalate means it is not trusted to.
+      -->
+      <section class="mix" aria-labelledby="mix-h">
+        <h2 id="mix-h" class="section-h">Decision mix</h2>
+        <div id="mix-bar" class="mix-bar" role="img" aria-label="Decision distribution"></div>
+        <ul id="mix-key" class="mix-key"></ul>
+      </section>
+
+      <div class="ledger-controls">
+        <div class="filters" role="group" aria-label="Filter the ledger">
+          <button class="filter is-active" data-filter="all">Everything</button>
+          <button class="filter" data-filter="interventions">
+            Stopped<span class="filter-count" id="stopped-count"></span>
+          </button>
         </div>
+        <form id="lookup" class="lookup" autocomplete="off">
+          <label for="pid" class="sr-only">Proposal identifier</label>
+          <input id="pid" name="pid" type="search" spellcheck="false"
+                 placeholder="Look up a proposal id — press /">
+          <button type="submit">Look up</button>
+        </form>
       </div>
 
-      <section aria-labelledby="attention-h">
-        <h2 id="attention-h">Needs attention</h2>
-        <ul id="attention" class="attention"></ul>
-      </section>
+      <div id="lookup-result" class="lookup-result" aria-live="polite"></div>
 
-      <section aria-labelledby="business-h">
-        <h2 id="business-h">Business state</h2>
-        <dl class="facts" id="business-facts"></dl>
-      </section>
-
-      <section aria-labelledby="activity-h">
-        <h2 id="activity-h">Recent verified actions</h2>
-        <div class="scroll-x">
-          <table id="activity">
-            <caption class="sr-only">Most recent governed writes to the system of record</caption>
-            <thead><tr>
-              <th scope="col">When</th><th scope="col">Record</th>
-              <th scope="col">Action</th><th scope="col">By</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
+      <!--
+        The chain, drawn as a chain. The spine is continuous only where
+        sequence numbers are, and `data-broken` marks a real discontinuity
+        rather than a styling flourish.
+      -->
+      <ol id="chain" class="chain" aria-label="Audit chain entries"></ol>
+      <p id="chain-foot" class="chain-foot"></p>
     </section>
 
-    <!-- ── Decisions ────────────────────────────────────────────────── -->
-    <section id="s-decisions" class="panel" hidden>
-      <h2>Decisions</h2>
-      <p class="lede">
-        Look up a governed proposal by its identifier to see what was decided,
-        why, who had to approve it, and whether the effect was confirmed.
-      </p>
-
-      <form id="lookup" class="lookup" autocomplete="off">
-        <label for="pid" class="sr-only">Proposal identifier</label>
-        <input id="pid" name="pid" type="text" spellcheck="false"
-               placeholder="Proposal identifier — press / to focus"
-               aria-describedby="lookup-hint">
-        <button type="submit">Look up</button>
-      </form>
-      <p id="lookup-hint" class="muted small">
-        This console lists no decision feed. The engine can return a proposal
-        by identifier and cannot yet enumerate them, and the business event log
-        carries no proposal identifier — so a “recent decisions” list here
-        would be a reconstruction shown as a record.
-      </p>
-
-      <div id="decision-result" class="result" aria-live="polite"></div>
-    </section>
-
-    <!-- ── Business records ─────────────────────────────────────────── -->
+    <!-- ── Records ──────────────────────────────────────────────────── -->
     <section id="s-records" class="panel" hidden>
-      <h2>Business records</h2>
-      <p class="lede">
-        Read directly from the system of record on a credential that holds
-        <code>SELECT</code> and nothing else.
-      </p>
+      <header class="panel-head">
+        <h1>Business records</h1>
+        <p class="lede">
+          The system of record, read on a credential that holds
+          <code>SELECT</code> and nothing else. Checking the table is what
+          separates believing the audit trail from verifying it.
+        </p>
+      </header>
+
+      <dl class="facts" id="business-facts"></dl>
+
+      <h2 class="section-h">Work orders</h2>
       <div class="scroll-x">
         <table id="records">
           <caption class="sr-only">Work orders in the system of record</caption>
@@ -112,7 +122,7 @@
         </table>
       </div>
 
-      <h2>Change history</h2>
+      <h2 class="section-h">Change history</h2>
       <div class="scroll-x">
         <table id="history">
           <caption class="sr-only">Governed writes recorded by the product</caption>
@@ -125,13 +135,15 @@
       </div>
     </section>
 
-    <!-- ── System assurance ─────────────────────────────────────────── -->
+    <!-- ── Assurance ────────────────────────────────────────────────── -->
     <section id="s-assurance" class="panel" hidden>
-      <h2>System assurance</h2>
-      <p class="lede">
-        The technical evidence behind everything shown elsewhere. If any of
-        this is wrong, nothing on the other surfaces can be relied upon.
-      </p>
+      <header class="panel-head">
+        <h1>System assurance</h1>
+        <p class="lede">
+          The evidence behind everything shown elsewhere. If any of this is
+          wrong, nothing on the other surfaces can be relied upon.
+        </p>
+      </header>
       <dl class="facts facts-wide" id="assurance-facts"></dl>
     </section>
 
@@ -140,11 +152,12 @@
 
 <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title" role="dialog" aria-modal="true">
   <div class="drawer-head">
-    <h2 id="drawer-title">Technical evidence</h2>
+    <h2 id="drawer-title">Chain entry</h2>
     <button id="drawer-close" class="ghost" aria-label="Close (Escape)">Close</button>
   </div>
   <div id="drawer-body" class="drawer-body"></div>
 </aside>
+<div id="scrim" class="scrim" hidden></div>
 
 <script src="/assets/aae.js"></script>
 </body>

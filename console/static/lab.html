@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>AAE Lab — try the governance engine</title>
+<link rel="stylesheet" href="/assets/aae.css">
+<link rel="stylesheet" href="/assets/lab.css">
+</head>
+<body class="lab">
+
+<a class="skip" href="#work">Skip to content</a>
+
+<!--
+  Deliberately loud. This surface holds every role token and can propose,
+  approve and execute; the assurance console holds one viewer token and can do
+  none of it. Someone arriving on the wrong tab must notice within a second,
+  which a subtle label would not achieve.
+-->
+<header class="masthead lab-masthead">
+  <div class="masthead-row">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">AAE Lab</span>
+      <span class="chip chip-live">Can act</span>
+    </div>
+    <div class="masthead-right">
+      <a class="cross-link" href="#" id="console-link">Assurance console →</a>
+    </div>
+  </div>
+  <p class="lab-warning">
+    A demonstration surface. It holds every role token, there is no login, and
+    the role below is chosen from a dropdown — which is exactly what a real
+    deployment must never allow. Everything it does is governed and recorded in
+    the audit chain all the same.
+  </p>
+</header>
+
+<div class="shell">
+  <nav class="nav" aria-label="Sections">
+    <button class="nav-item is-active" data-surface="compose" aria-current="page">Try a call</button>
+    <button class="nav-item" data-surface="bench">Benchmarks</button>
+  </nav>
+
+  <main id="work" class="surface" tabindex="-1">
+
+    <!-- ── Compose ──────────────────────────────────────────────────── -->
+    <section id="s-compose" class="panel">
+      <header class="panel-head">
+        <h1>Try a call</h1>
+        <p class="lede">
+          Compose a tool call, pick who you are, and read what the engine
+          decided — including why. Nothing here is simulated: the call goes to
+          the same control plane an agent would use.
+        </p>
+      </header>
+
+      <!--
+        Presets first. The scenarios the benchmark declares are already
+        complete, valid calls against this deployment's contract, so loading
+        one is a click. Typing a work-order id by hand is the wrong kind of
+        work: slow, and a typo reads as a governance decision.
+      -->
+      <section class="presets" aria-labelledby="presets-h">
+        <h2 id="presets-h" class="section-h">Start from a scenario</h2>
+        <div id="presets" class="preset-list"></div>
+        <p class="hint">
+          These are the benchmark scenarios. Loading one fills the form; it
+          tells you nothing about what the engine ought to decide, because the
+          answer key is not served here.
+        </p>
+      </section>
+
+      <div class="bench-grid">
+        <form id="compose" class="composer" autocomplete="off">
+          <div class="field">
+            <label for="role">Act as</label>
+            <select id="role" name="role"></select>
+            <p class="hint" id="role-note"></p>
+          </div>
+
+          <div class="field">
+            <label for="tool">Tool</label>
+            <select id="tool" name="tool"></select>
+            <p class="hint" id="tool-note"></p>
+          </div>
+
+          <div class="field">
+            <label for="intent">Under authority</label>
+            <select id="intent" name="intent"></select>
+            <p class="hint" id="intent-note"></p>
+          </div>
+
+          <div class="field">
+            <label for="env">Target environment</label>
+            <select id="env" name="env"></select>
+          </div>
+
+          <fieldset class="field args">
+            <legend>Arguments</legend>
+            <div id="args"></div>
+          </fieldset>
+
+          <div class="actions">
+            <button type="submit" class="primary">Assess</button>
+            <button type="button" id="reset" class="ghost">Clear</button>
+          </div>
+        </form>
+
+        <section class="outcome" aria-live="polite" aria-labelledby="outcome-h">
+          <h2 id="outcome-h" class="section-h">Decision</h2>
+          <div id="outcome" class="outcome-body">
+            <p class="empty">Submit a call and the whole envelope appears here:
+            what was decided, the grounding signals behind it, which signed
+            ToolSpec authorised it, and where it landed in the chain.</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ── Benchmarks ───────────────────────────────────────────────── -->
+    <section id="s-bench" class="panel" hidden>
+      <header class="panel-head">
+        <h1>Benchmarks</h1>
+        <p class="lede">
+          Declared tool calls with a stated expected decision, and the argument
+          for why that decision is the correct one. A disagreement is a
+          question, not automatically a bug: either the engine decided wrongly,
+          or the case's reasoning is wrong.
+        </p>
+      </header>
+
+      <!--
+        Choose what to run. A filtered result must never read as a full one, so
+        the selection is echoed back with the score and the report records it.
+      -->
+      <section class="selector" aria-labelledby="select-h">
+        <h2 id="select-h" class="section-h">Choose what to run</h2>
+        <div id="suite-picker" class="picker"></div>
+      </section>
+
+      <div class="bench-controls">
+        <button id="run-bench" class="primary">Run selected</button>
+        <button id="select-all" type="button" class="ghost">Select all</button>
+        <button id="select-none" type="button" class="ghost">Clear</button>
+        <span id="bench-state" class="hint"></span>
+      </div>
+
+      <div id="write-warning" class="write-warning" hidden></div>
+      <div id="scorecard" class="scorecard"></div>
+      <div id="layer-card" class="scorecard"></div>
+
+      <!--
+        The audit trail is not a log this page wrote about itself. It is the
+        set of chain positions the control plane recorded independently, and
+        the check re-reads them.
+      -->
+      <section id="trail-section" class="trail" hidden aria-labelledby="trail-h">
+        <h2 id="trail-h" class="section-h">Audit trail</h2>
+        <p class="hint">
+          Every governed act this run performed, as the control plane recorded
+          it. Verifying re-reads each position from the chain and confirms the
+          hash still matches — so the score can be checked by someone who
+          trusts nothing on this page.
+        </p>
+        <div class="bench-controls">
+          <button id="verify-trail" class="primary">Verify against the chain</button>
+          <span id="trail-state" class="hint"></span>
+        </div>
+        <div class="scroll-x"><table id="trail">
+          <thead><tr>
+            <th scope="col">Chain #</th><th scope="col">Act</th>
+            <th scope="col">Scenario</th><th scope="col">Entry hash</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </section>
+
+      <div id="bench-detail"></div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/assets/lab.js"></script>
+</body>
+</html>

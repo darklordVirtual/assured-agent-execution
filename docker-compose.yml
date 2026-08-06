@@ -24,7 +24,7 @@ services:
   # Audit chain, review queue, grant ledger, outbox, envelopes. Core-owned
   # tables. Not published: only the control plane needs it.
   control-plane-db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       POSTGRES_USER: remora
       POSTGRES_PASSWORD: ${CONTROL_PLANE_DB_PASSWORD:?run "python run.py up" first}
@@ -35,6 +35,7 @@ services:
       timeout: 5s
       retries: 12
     expose: ["5432"]
+    networks: [data]
     volumes:
       - control-plane-data:/var/lib/postgresql/data
     security_opt:
@@ -56,7 +57,7 @@ services:
   # cannot write it. Published, because that reader runs outside the
   # control plane — a different process from the one that acted.
   workorder-db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       POSTGRES_USER: wo_admin
       POSTGRES_PASSWORD: ${WORKORDER_DB_PASSWORD:?run "python run.py up" first}
@@ -66,6 +67,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+    networks: [data, edge]
     ports:
       - "127.0.0.1:${AAE_WORKORDER_DB_PORT:-55432}:5432"
     volumes:
@@ -89,7 +91,7 @@ services:
   # worker and reader roles it creates hold no DDL rights: a running
   # product should not be able to change its own schema.
   workorder-migrate:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     depends_on:
       workorder-db: {condition: service_healthy}
     environment:
@@ -98,6 +100,7 @@ services:
       # rather than baked into the SQL, so nothing secret is ever committed.
       AAE_WORKER_PASSWORD: ${AAE_WORKER_PASSWORD:?run "python run.py up" first}
       AAE_READER_PASSWORD: ${AAE_READER_PASSWORD:?run "python run.py up" first}
+    networks: [data]
     volumes:
       - ./db/workorders:/migrations:ro
     entrypoint: ["sh", "-c"]
@@ -116,6 +119,27 @@ services:
           "SELECT 'system of record at schema version ' || max(version) FROM schema_version"
     restart: "no"
 
+  # Grants the console a SELECT-only credential on the governance database.
+  # Runs before the control plane, which is why 001 uses ALTER DEFAULT
+  # PRIVILEGES: the core creates its tables lazily, so on a fresh volume there
+  # is nothing to grant on yet.
+  chain-reader-grant:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    depends_on:
+      control-plane-db: {condition: service_healthy}
+    environment:
+      PGPASSWORD: ${CONTROL_PLANE_DB_PASSWORD}
+      AAE_CHAIN_READER_PASSWORD: ${AAE_CHAIN_READER_PASSWORD:?run "python run.py up" first}
+    networks: [data]
+    volumes:
+      - ./db/controlplane:/migrations:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        psql -h control-plane-db -U remora -d remora -v ON_ERROR_STOP=1 -q           -v chain_reader_password="$$AAE_CHAIN_READER_PASSWORD"           -f /migrations/001_chain_reader.sql
+    restart: "no"
+
   # ── The governed control plane ──────────────────────────────────────────
   control-plane:
     build:
@@ -124,6 +148,8 @@ services:
     depends_on:
       control-plane-db: {condition: service_healthy}
       workorder-migrate: {condition: service_completed_successfully}
+      chain-reader-grant: {condition: service_completed_successfully}
+    networks: [data, edge]
     ports:
       - "127.0.0.1:${AAE_API_PORT:-8088}:8000"
     environment:
@@ -221,6 +247,7 @@ services:
       dockerfile: docker/console.Dockerfile
     depends_on:
       control-plane: {condition: service_healthy}
+    networks: [data, edge]
     ports:
       - "127.0.0.1:${AAE_CONSOLE_PORT:-8089}:8090"
     environment:
@@ -233,6 +260,10 @@ services:
       AAE_TOKEN_VIEWER: ${AAE_TOKEN_VIEWER}
       # Same read-only credential the postcondition reader holds.
       AAE_WORKORDER_READER_DSN: postgresql://aae_reader:${AAE_READER_PASSWORD}@workorder-db:5432/workorders
+      # SELECT-only on the governance database, so the ledger shows the real
+      # audit chain rather than a reconstruction. Cannot write it.
+      AAE_CHAIN_READER_DSN: postgresql://aae_chain_reader:${AAE_CHAIN_READER_PASSWORD}@control-plane-db:5432/remora
+      AAE_CHAIN_TENANT: aae-work-orders
       # Posture panel reports booleans, never the signing key itself.
       AAE_TOOLSPEC_CONFIGURED: "1"
       AAE_TOOLSPEC_PINNED: ${REMORA_TOOLSPEC_PINNED_DIGEST:+1}
@@ -249,6 +280,58 @@ services:
       - /tmp:size=64m,mode=1777
     mem_limit: 512m
     pids_limit: 256
+
+  # ── The lab ─────────────────────────────────────────────────────────
+  # A DEMONSTRATION AND TEST SURFACE, and the only container here that can
+  # act. It holds every role token, has no login, and lets a caller choose the
+  # role it acts as — which is exactly what a real deployment must never
+  # permit, and why this is a separate service rather than a tab in the
+  # console. See docker/lab.Dockerfile for the full reasoning.
+  #
+  # Everything it does is still governed: the control plane enforces role
+  # separation against the lab exactly as against any other client, and every
+  # call it makes lands in the audit chain. Choosing a role here selects which
+  # credential is presented; it does not grant that credential's authority.
+  #
+  # Not part of a production profile. Remove this block and everything else
+  # still runs.
+  lab:
+    build:
+      context: .
+      dockerfile: docker/lab.Dockerfile
+    depends_on:
+      control-plane: {condition: service_healthy}
+    networks: [data, edge]
+    ports:
+      - "127.0.0.1:${AAE_LAB_PORT:-8090}:8090"
+    environment:
+      AAE_API_URL: http://control-plane:8000
+      # Every role, on purpose. See the block comment above.
+      AAE_TOKEN_AGENT: ${AAE_TOKEN_AGENT}
+      AAE_TOKEN_REVIEWER: ${AAE_TOKEN_REVIEWER}
+      AAE_TOKEN_EXPERT: ${AAE_TOKEN_EXPERT}
+      AAE_TOKEN_SENIOR: ${AAE_TOKEN_SENIOR}
+      AAE_TOKEN_VIEWER: ${AAE_TOKEN_VIEWER}
+      # Read from the deployment's own declarations, so the composer offers the
+      # tools the engine actually enforces rather than a copy that drifts.
+      AAE_TOOLSPEC_FILE: /app/toolpacks/work_order/tool_specs.json
+      AAE_WORK_ORDER_AUTHORITY_FILE: /app/toolpacks/work_order/work_orders.json
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 512m
+    pids_limit: 256
+
+networks:
+  # No route off the host. This is the difference between a declaration and a
+  # control — a container on `data` alone cannot reach out, whatever it wants.
+  data:
+    internal: true
+  edge:
 
 volumes:
   control-plane-data:

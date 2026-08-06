@@ -124,8 +124,9 @@ move the imports and delete the file.
 
 ## What the pin does not give you
 
-The REMORA wheel is byte-pinned. The rest of this product's build is not: base
-images are tags rather than digests, and the Python dependencies are floors
-rather than a lockfile. `python run.py sbom` records what a given build actually
-contained, which is a record, not reproducibility. See
-[limitations.md](limitations.md).
+The REMORA wheel is byte-pinned by SHA-256. Base images are digest-pinned and
+the Python dependencies are exact versions in `docker/requirements.lock`, which
+is a weaker guarantee: versions, not bytes. And the pin says nothing about the
+*database* — REMORA has no versioned migrations, so a pin bump against an
+existing volume leaves the old schema in place. `python run.py doctor` reports
+that; see [limitations.md](limitations.md).

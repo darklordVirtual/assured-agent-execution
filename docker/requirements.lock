@@ -1,0 +1,36 @@
+# Exact versions for the images this product builds.
+#
+# The REMORA wheel is byte-pinned by SHA-256 in product/core-artifact-lock.json.
+# Everything else used to be a floor — `fastapi>=0.115` — so two builds a week
+# apart could ship different code with the same Dockerfile. These are the
+# versions the images were built and tested against.
+#
+# Regenerate after a deliberate upgrade:
+#
+#   docker compose run --rm --no-deps --entrypoint python control-plane -c \
+#     "import importlib.metadata as m; [print(f'{d.metadata[\"Name\"]}=={d.version}') \
+#      for d in m.distributions()]"
+#
+# What this is NOT: a hash-locked file. `--require-hashes` would also pin the
+# artifact bytes, not only the version, and would need the full transitive
+# closure resolved and hashed. Exact versions close the "same Dockerfile,
+# different build" gap; they do not close a compromised-index gap. Stated
+# plainly rather than implied — see docs/limitations.md.
+#
+# Used as a pip CONSTRAINT file (`-c`) by both images: it says which version a
+# package must be if something asks for it, never that it should be installed.
+# Each Dockerfile still names what it wants. That is why there are no extras
+# here — `uvicorn[standard]` is a valid requirement and an invalid constraint,
+# and pip rejects the file outright ("Constraints cannot have extras").
+#
+# Transitive dependencies are resolved by pip from these. The SBOM
+# (`python run.py sbom`) records what a given build actually contained.
+
+fastapi==0.141.1
+uvicorn==0.52.1
+httpx==0.28.1
+psycopg==3.3.4
+psycopg-binary==3.3.4
+psycopg2-binary==2.9.12
+pydantic==2.13.4
+starlette==1.4.1

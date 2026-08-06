@@ -1,5 +1,5 @@
 {
-  "_comment": "Risk classification for this deployment's own tools (REMORA_TOOL_METADATA_FILE). REMORA's TOOL_REGISTRY classifies six names; without this file every tool below would fall to the fail-closed floor of critical/unknown and no read could ever be ACCEPTed. The declaration is additive only — a name REMORA already classifies is refused here — and its resolved content is hashed into REMORA's policy bundle identity, so editing this file invalidates every execution lease issued under the old classification. Changing a tier is a policy change, not a config tweak.",
+  "_comment": "Risk classification for this deployment's own tools (REMORA_TOOL_METADATA_FILE). REMORA's TOOL_REGISTRY classifies six names; without this file every tool below would fall to the fail-closed floor of critical/unknown and no read could ever be ACCEPTed. The declaration is additive only \u2014 a name REMORA already classifies is refused here \u2014 and its resolved content is hashed into REMORA's policy bundle identity, so editing this file invalidates every execution lease issued under the old classification. Changing a tier is a policy change, not a config tweak.",
   "version": 1,
   "tools": {
     "read_work_order": {
@@ -17,7 +17,7 @@
       "schema_valid": true
     },
     "create_work_order": {
-      "risk_tier": "medium",
+      "risk_tier": "high",
       "domain": "maintenance",
       "action_type": "write",
       "rollback_available": false,
@@ -37,5 +37,6 @@
       "rollback_available": false,
       "schema_valid": true
     }
-  }
+  },
+  "_medium_tier_note": "create_work_order is declared high because a fully grounded MEDIUM-risk write matches no rule in REMORA 0.10.0: it falls through to default_safe_abstain with no review item and no ResolutionPlan, so an operator never sees it. At high it reaches the review queue with a named required_role, which is where a human can at least see it. It lands on ESCALATE rather than VERIFY because rollback_available is false, and that is truthful: no deployed tool removes a work order, so creating one cannot be undone. Note that an approved ESCALATE still cannot execute in 0.10.0 - see docs/limitations.md. The classification is honest; the remaining dead end is upstream."
 }

@@ -16,18 +16,25 @@ those roles. A presentation surface carrying an approver credential is a
 high-value target wearing a low-value label. Running the scenarios is a CLI
 action now, which is where a privileged credential belongs.
 
-Four surfaces:
+Three surfaces, plus a strip that qualifies all of them.
 
-  Overview           is enforcement operational, does the audit verify, what
-                     needs attention. A console showing only activity would
-                     let a deployment look healthy while running unpinned.
-  Decisions          look up a proposal: what was decided, why, who had to
-                     approve it, and whether the effect was confirmed.
-  Business records   the work orders, on the SELECT-only credential. Seeing
+  Assurance strip    verified engine, runtime mode, tool policy, audit
+                     integrity, credential scope — in the masthead, on every
+                     screen. It was a separate page, which meant an operator
+                     could read activity all day and never see that the
+                     deployment was running unpinned.
+  Ledger             what the agent attempted and what the controls did,
+                     straight from the signed audit chain. Filterable to the
+                     entries where a control refused something, because that
+                     is the question an operator actually arrives with.
+  Records            the work orders, on the SELECT-only credential. Seeing
                      the change in the actual table is the difference between
                      believing the audit trail and checking it.
-  System assurance   the technical evidence: verified engine, tool policy
-                     protection, audit integrity, credential scope.
+  Assurance          the same evidence as the strip, in full, with the
+                     reasoning behind each line.
+
+Two read-only database credentials, both SELECT and neither able to write:
+one on the system of record, one on the governance chain.
 
 This module does five things and no more: fetch, validate, serve static files,
 report failure legibly, and set security headers.
@@ -53,6 +60,11 @@ API = os.environ.get("AAE_API_URL", "http://control-plane:8000")
 #: is something it should not be doing.
 VIEWER_TOKEN = os.environ.get("AAE_TOKEN_VIEWER", "")
 READER_DSN = os.environ.get("AAE_WORKORDER_READER_DSN", "")
+
+#: SELECT-only on the governance database. Lets the console read the audit
+#: chain — the record of what was decided — without being able to change it.
+CHAIN_DSN = os.environ.get("AAE_CHAIN_READER_DSN", "")
+CHAIN_TENANT = os.environ.get("AAE_CHAIN_TENANT", "aae-work-orders")
 
 STATIC = Path(__file__).parent / "static"
 LOCK_FILE = Path(__file__).parent / "core-artifact-lock.json"
@@ -320,13 +332,160 @@ def records() -> Any:
     )
 
 
-# ── Decisions: look up a proposal ──────────────────────────────────────────
+# ── The ledger: what was attempted, and what the controls did ──────────────
 #
-# A lookup, not a feed. The core returns a proposal when its id is known and
-# cannot yet LIST proposals, and the business event log carries no proposal id
-# because the dispatcher does not pass one to the tool. Assembling a "recent
-# decisions" list from what is available would mean showing a reconstruction
-# as though it were the record. See docs/limitations.md.
+# Read straight from the tenant audit chain on a SELECT-only credential. This
+# is the governance record itself, not a reconstruction of one: every row is a
+# signed, hash-linked entry the control plane wrote as it decided.
+#
+# The earlier note here said a decisions feed could not be built honestly.
+# That was true of the two sources it considered — the SDK cannot enumerate
+# proposals, and the business event log carries no proposal id — and it was
+# wrong to stop there, because the chain has always held all of it. The result
+# was a console that showed a health banner and four work orders while the
+# entire enforcement record sat unread one network away.
+
+#: Events where a control stopped something. These are the reason the product
+#: exists, so they are named rather than inferred from a decision value: an
+#: assessment that says `escalate` was never executed, while a
+#: `execution_binding_refused` means an approved action was caught being
+#: swapped at the last moment. Different facts, shown differently.
+_INTERVENTIONS = {
+    "execution_binding_refused":
+        "The payload did not match what was approved.",
+    "execution_grant_refused":
+        "The grant was not valid for this call.",
+    "execution_approval_invalidated":
+        "Re-assessment at execution came back stricter than the approval.",
+}
+
+#: Ordered by how much they constrain the agent. The UI reads this order.
+_DECISIONS = ("accept", "verify", "escalate", "abstain")
+
+
+class LedgerEntry(BaseModel):
+    """One link in the chain, projected to what an operator needs to read."""
+
+    sequence_no: int
+    at: str
+    event: str
+    #: Present on assessments; absent on approvals and executions.
+    decision: str | None = None
+    reasons: list[str] = []
+    tool_name: str | None = None
+    target_environment: str | None = None
+    actor: str | None = None
+    proposal_id: str | None = None
+    #: Set when this entry records a control stopping something.
+    intervention: str | None = None
+    #: Whether the tool actually performed its side effect, where known.
+    tool_executed: bool | None = None
+    effect_status: str | None = None
+    entry_hash: str
+    previous_hash: str | None = None
+
+
+class Ledger(BaseModel):
+    entries: list[LedgerEntry]
+    #: Whole-chain totals, not totals of the page above.
+    total_entries: int
+    decision_counts: dict[str, int]
+    intervention_count: int
+    #: True when consecutive `sequence_no` values in `entries` are contiguous.
+    #: A break is either the page boundary or a gap, and the UI must not draw
+    #: an unbroken chain over one.
+    contiguous: bool
+
+
+def _chain_reader():
+    import psycopg
+    from psycopg.rows import dict_row
+
+    return psycopg.connect(CHAIN_DSN, row_factory=dict_row,
+                           connect_timeout=5, autocommit=True)
+
+
+def _ledger_entry(row: dict) -> LedgerEntry:
+    payload = row["payload"] or {}
+    event = payload.get("event") or "unknown"
+    return LedgerEntry(
+        sequence_no=row["sequence_no"],
+        at=str(row["timestamp"]),
+        event=event,
+        decision=payload.get("decision"),
+        reasons=list(payload.get("reasons") or []),
+        tool_name=payload.get("tool_name") or payload.get("tool_id"),
+        target_environment=payload.get("target_environment"),
+        actor=payload.get("actor"),
+        proposal_id=payload.get("proposal_id"),
+        intervention=_INTERVENTIONS.get(event),
+        tool_executed=payload.get("tool_executed"),
+        effect_status=payload.get("status") if event == "effect_verified"
+        else None,
+        entry_hash=row["entry_hash"],
+        previous_hash=row["previous_hash"],
+    )
+
+
+@app.get("/api/ledger", response_model=Ledger)
+def ledger(limit: int = 60, only: str = "") -> Any:
+    """The governance record, newest first.
+
+    ``only=interventions`` narrows to the entries where a control refused
+    something — the question an operator actually arrives with.
+    """
+    if not CHAIN_DSN:
+        return _problem("No governance-database credential is configured.")
+    limit = max(1, min(limit, 200))
+
+    where, params = "WHERE tenant_id = %s", [CHAIN_TENANT]
+    if only == "interventions":
+        where += " AND payload->>'event' = ANY(%s)"
+        params.append(list(_INTERVENTIONS))
+
+    try:
+        with _chain_reader() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT sequence_no, timestamp, payload, entry_hash,"
+                "       previous_hash FROM tenant_chain_entry "
+                f"{where} ORDER BY sequence_no DESC LIMIT %s",
+                [*params, limit])
+            rows = cur.fetchall()
+
+            # Totals over the whole chain, so the summary does not silently
+            # describe only the page above it.
+            cur.execute(
+                "SELECT payload->>'decision' AS decision, count(*) AS n"
+                "  FROM tenant_chain_entry WHERE tenant_id = %s"
+                "   AND payload->>'decision' IS NOT NULL GROUP BY 1",
+                [CHAIN_TENANT])
+            counts = {r["decision"]: r["n"] for r in cur.fetchall()}
+            cur.execute(
+                "SELECT count(*) AS n FROM tenant_chain_entry"
+                " WHERE tenant_id = %s AND payload->>'event' = ANY(%s)",
+                [CHAIN_TENANT, list(_INTERVENTIONS)])
+            interventions = cur.fetchone()["n"]
+            cur.execute(
+                "SELECT count(*) AS n FROM tenant_chain_entry"
+                " WHERE tenant_id = %s", [CHAIN_TENANT])
+            total = cur.fetchone()["n"]
+    except Exception as exc:  # noqa: BLE001
+        return _problem("The governance record is not reachable.", exc)
+
+    entries = [_ledger_entry(r) for r in rows]
+    numbers = [e.sequence_no for e in entries]
+    contiguous = all(a - b == 1 for a, b in zip(numbers, numbers[1:]))
+
+    return Ledger(
+        entries=entries,
+        total_entries=total,
+        decision_counts={d: counts.get(d, 0) for d in _DECISIONS},
+        intervention_count=interventions,
+        contiguous=contiguous,
+    )
+
+
+# ── Decisions: look up one proposal ────────────────────────────────────────
 
 def _proxy(path: str, missing: str) -> Any:
     status, body = _get(path)

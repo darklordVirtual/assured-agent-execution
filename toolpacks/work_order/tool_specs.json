@@ -1,6 +1,6 @@
 {
   "_comment": "UNSIGNED source for this deployment's ToolSpec bundle. Never loaded at runtime — scripts/sign_toolpack.py computes each callable_digest from the function actually registered, signs the result with the deployment's key, and writes tool_specs.signed.json, which is what the control plane loads. A ToolSpec is the authority to call a tool: its argument schema, the environments it may touch, the credentials it may use, whether its effect can be read back. One signed spec replaces four sources that could previously disagree — the static registry metadata, the callable registry, the semantic contract, and the client-asserted schema_valid flag.",
-  "_network_policy_note": "network_policy declares what a tool REQUIRES, not what the deployment enforces. Nothing in this compose profile blocks egress; the reference tools simply need none. Treat it as a declaration to check a call against, never as a network control.",
+  "_network_policy_note": "network_policy declares what a tool REQUIRES, not what the deployment enforces. The compose profile puts the control-plane database on an internal Docker network with no route off the host, so that one is a control; every container that publishes a port still has egress. Treat this field as a declaration to check a call against, and see docs/security-model.md for what is actually enforced.",
   "_callable_digest_note": "The callable_digest values below are placeholders. sign_toolpack.py overwrites every one of them from inspect.getsource of the registered function, and refuses to sign if a declared tool has no callable or a registered callable has no spec.",
 
   "schema_version": 1,
@@ -89,7 +89,7 @@
         "required": ["wo_id", "title", "asset_id"],
         "additionalProperties": false
       },
-      "risk_tier": "medium",
+      "risk_tier": "high",
       "action_type": "write",
       "domain": "maintenance",
       "capabilities": ["maintenance_write"],

@@ -231,3 +231,49 @@ def test_a_reexport_of_the_same_proposal_carries_the_same_sections(
     # The lifecycle section has no export stamp, so it IS byte-stable.
     lifecycle = f"lifecycle-{result.proposal_id}.json"
     assert first["files"][lifecycle] == second["files"][lifecycle]
+
+
+def test_an_approved_escalation_still_cannot_execute(agent, approver_for) -> None:
+    """A known upstream dead end, pinned so it cannot rot quietly.
+
+    REMORA 0.10.0's review queue authorizes execution only when the fresh
+    decision is ACCEPT or VERIFY. Escalation is deterministic, so re-assessing
+    at execution returns ESCALATE again, falls outside that set, and re-queues
+    the item — after the approval was accepted. The named authority decides,
+    and the decision cannot be acted on.
+
+    This test asserts the *current* behaviour, not the desired one. When the
+    core is fixed and the pin moves, it fails — which is the point: that
+    failure is the signal to update docs/limitations.md and delete this test,
+    rather than leaving a limitation documented after it stopped being true.
+    """
+    result = agent.assess(ToolCall(
+        tool_name="create_work_order",
+        arguments={"wo_id": "WO-1310", "title": "Pump seal replacement",
+                   "asset_id": "P-7"},
+        target_environment="staging", intent_ref="WO-1310"))
+
+    assert result.action is DecisionAction.ESCALATE, (
+        f"create_work_order no longer escalates (got {result.action}). "
+        f"Re-derive the limitation before changing this test.")
+    assert result.review_item_id, "escalation produced no review item"
+
+    required = getattr(result.resolution_plan, "required_role", None)
+    with approver_for(required) as (role, approver):
+        approval = approver.approve(result.review_item_id)
+    assert approval.status == "approved", (
+        f"the core refused the approval outright, which would be an "
+        f"improvement over accepting one it cannot honour: {approval}")
+
+    outcome = agent.execute(
+        result.review_item_id,
+        ToolCall(tool_name="create_work_order",
+                 arguments={"wo_id": "WO-1310",
+                            "title": "Pump seal replacement",
+                            "asset_id": "P-7"},
+                 target_environment="staging", intent_ref="WO-1310"))
+
+    assert outcome.outcome == "approval_invalidated", (
+        f"an approved escalation now reaches {outcome.outcome!r}. If it "
+        f"executes, the upstream dead end is fixed: remove the entry from "
+        f"docs/limitations.md and delete this test.")

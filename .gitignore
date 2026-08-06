@@ -9,3 +9,10 @@ evidence/
 backups/
 sbom/
 toolpacks/work_order/tool_specs.signed.json
+
+# Benchmark output. A run's report is evidence about one execution
+# against one deployment, and CI publishes it as an artifact —
+# committing it would make the repository claim a score it is not
+# currently producing.
+benchmarks/report.json
+benchmarks/predictions.json
