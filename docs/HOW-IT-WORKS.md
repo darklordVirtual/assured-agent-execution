@@ -123,17 +123,25 @@ compares **only the declared delta**. Only the declared delta, because a
 system of record has other legitimate writers; flagging unexpected fields
 would turn every concurrent update into a mismatch and the signal into noise.
 
-| Status | Terminal | Means |
-|---|---|---|
-| `EFFECT_VERIFIED` | — | the record shows the approved delta |
-| `EFFECT_MISMATCH` | **yes** | we looked, and it does not |
-| `EFFECT_UNOBSERVABLE` | no | we could not see the object |
-| `EFFECT_VERIFIER_FAILED` | no | the reader itself failed |
-| `EFFECT_UNSUPPORTED` | no | no reader is declared for this tool |
+| Status | `is_terminal` | Means | A finding? |
+|---|---|---|---|
+| `EFFECT_VERIFIED` | yes | the record shows the approved delta | no |
+| `EFFECT_MISMATCH` | yes | we looked, and it does not | **yes** |
+| `EFFECT_UNOBSERVABLE` | no | we could not see the object | no |
+| `EFFECT_VERIFIER_FAILED` | no | the reader itself failed | no |
+| `EFFECT_UNSUPPORTED` | yes | no reader is declared for this tool | no |
 
-The non-terminal three are the point. A reader outage is not evidence an
-action failed, and if compensation were ever automated on that signal,
-treating it as one would undo actions that succeeded.
+Two different questions, and conflating them is a trap this product fell into
+itself. `is_terminal` asks *is this a settled answer?* — VERIFIED and
+UNSUPPORTED are settled and perfectly fine. Only `MISMATCH` is a finding.
+
+The CLI's `verify-effect` originally exited non-zero on `is_terminal`, so a CI
+job wired to it would have failed on every effect it successfully confirmed.
+`test_cli.py::test_verify_effect_exits_nonzero_only_on_a_mismatch` pins it.
+
+The two non-terminal statuses matter for the opposite reason: a reader outage
+is not evidence an action failed, and if compensation were ever automated on
+that signal, treating it as one would undo actions that succeeded.
 
 REMORA stores the result as an *attestation by a named verifier*, not a proof
 of its own: verification runs here because the reader holds the credentials,
@@ -148,7 +156,8 @@ must produce.
 python run.py sign        # re-sign after changing registry.py or tool_specs.json
 python run.py check-sign  # verify without re-signing
 python run.py doctor      # what is pinned, served, reachable
-python run.py verify      # all 126 tests
+python run.py verify      # all 134 tests
+aae lifecycle <id>        # the event trail, --json for everything
 aae evidence export --out ./evidence <proposal-id> ...
 ```
 

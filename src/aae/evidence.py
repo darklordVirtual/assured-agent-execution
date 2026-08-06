@@ -34,7 +34,7 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _plain(value: Any) -> Any:
+def plain(value: Any) -> Any:
     """Plain containers, recursively.
 
     The SDK freezes response mappings as ``MappingProxyType`` so a consumer
@@ -48,9 +48,9 @@ def _plain(value: Any) -> Any:
     fix would fail on the second-deepest one instead of the first.
     """
     if isinstance(value, Mapping):
-        return {str(k): _plain(v) for k, v in value.items()}
+        return {str(k): plain(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_plain(v) for v in value]
+        return [plain(v) for v in value]
     return value
 
 
@@ -58,7 +58,7 @@ def _write_json(path: Path, payload: Any) -> str:
     # Canonical: sorted keys, no incidental whitespace. Two exports of the
     # same content must produce the same bytes, or the digests below describe
     # the formatter rather than the evidence.
-    data = json.dumps(_plain(payload), sort_keys=True,
+    data = json.dumps(plain(payload), sort_keys=True,
                       separators=(",", ":"),
                       ensure_ascii=False).encode("utf-8")
     path.write_bytes(data)

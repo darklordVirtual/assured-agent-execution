@@ -79,10 +79,33 @@ python run.py check-sign
 #  → toolspec_signature_invalid: its content changed after signing
 ```
 
+Then ask what happened to any proposal:
+
+```bash
+aae lifecycle <proposal-id>
+```
+```
+proposal 194fd239-0d01-419d-9350-0574fab190c9
+state    ASSESSED
+
+  #235  assessed → accept (grounded_read_accept)
+        tool      read_work_order
+        target    staging
+        actor     cred-a0c954378408
+        toolspec  ac53494d…
+        authority d51f3c4a…
+        payload   a75ba66b…
+        chain     4e48948b…
+```
+
+Which signed ToolSpec authorized it, which work order it acted under, the hash
+the approval is welded to, and its position in the tamper-evident chain.
+`--json` gives the unabridged record.
+
 `aae` lives in the venv `run.py up` created; `python -m aae.cli` works without
 activating it.
 
-`python run.py verify` runs all 126 tests. Among them,
+`python run.py verify` runs all 134 tests. Among them,
 `tests/e2e/test_toolspec.py` attacks the bundle this deployment is actually
 running — six tamper shapes, a revoked signer, and a correctly-signed *older*
 bundle. Every signature check passes on that last one, because it really was
