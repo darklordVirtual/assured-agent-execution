@@ -1,0 +1,53 @@
+{
+  "_comment": "Signed work orders: the authority an agent's action is performed UNDER. Resolved server-side by toolpacks/work_order/bundle.py, never supplied by the agent — a caller names an id, and this file decides what that id authorizes. The whole file is hashed into every decision's audit record, so editing one entry is visible on every proposal in flight. In a real deployment this comes from the CMMS or work-management system, and 'signed' means signed; here it is a file so the product can be installed and exercised in one command.",
+
+  "WO-1201": {
+    "task_text": "Read work order WO-1201 to confirm its status before the shift handover.",
+    "operation": "read",
+    "resource_type": "work_order",
+    "requested_effect": "read",
+    "target_entities": ["target_resource"],
+    "source_spans": ["work order WO-1201"],
+    "action_spans": ["read work order WO-1201"]
+  },
+
+  "WO-1202": {
+    "task_text": "Close work order WO-1202 now that the level alarm on tank T-3 has been reviewed by the shift lead.",
+    "operation": "close",
+    "resource_type": "work_order",
+    "requested_effect": "close",
+    "target_entities": ["target_resource"],
+    "source_spans": ["work order WO-1202"],
+    "action_spans": ["close work order WO-1202"]
+  },
+
+  "WO-1203": {
+    "task_text": "Raise the priority of work order WO-1203 because the pump seal replacement is now blocking the line.",
+    "operation": "update",
+    "resource_type": "work_order",
+    "requested_effect": "update",
+    "target_entities": ["target_resource"],
+    "source_spans": ["work order WO-1203"],
+    "action_spans": ["raise the priority of work order WO-1203"]
+  },
+
+  "WO-1310": {
+    "task_text": "Create work order WO-1310 for the pump seal replacement identified on the morning round of asset P-7.",
+    "operation": "create",
+    "resource_type": "work_order",
+    "requested_effect": "create",
+    "target_entities": ["target_resource"],
+    "source_spans": ["work order WO-1310"],
+    "action_spans": ["create work order WO-1310"]
+  },
+
+  "MAINT-PURGE-Q3": {
+    "task_text": "Purge the event history for work order WO-1150 as part of the quarterly retention run.",
+    "operation": "delete",
+    "resource_type": "work_order",
+    "requested_effect": "delete",
+    "target_entities": ["target_resource"],
+    "source_spans": ["work order WO-1150"],
+    "action_spans": ["purge the event history"]
+  }
+}

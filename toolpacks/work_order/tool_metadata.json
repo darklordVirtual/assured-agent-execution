@@ -1,0 +1,41 @@
+{
+  "_comment": "Risk classification for this deployment's own tools (REMORA_TOOL_METADATA_FILE). REMORA's TOOL_REGISTRY classifies six names; without this file every tool below would fall to the fail-closed floor of critical/unknown and no read could ever be ACCEPTed. The declaration is additive only — a name REMORA already classifies is refused here — and its resolved content is hashed into REMORA's policy bundle identity, so editing this file invalidates every execution lease issued under the old classification. Changing a tier is a policy change, not a config tweak.",
+  "version": 1,
+  "tools": {
+    "read_work_order": {
+      "risk_tier": "low",
+      "domain": "maintenance",
+      "action_type": "read",
+      "rollback_available": true,
+      "schema_valid": true
+    },
+    "set_work_order_priority": {
+      "risk_tier": "low",
+      "domain": "maintenance",
+      "action_type": "write",
+      "rollback_available": true,
+      "schema_valid": true
+    },
+    "create_work_order": {
+      "risk_tier": "medium",
+      "domain": "maintenance",
+      "action_type": "write",
+      "rollback_available": false,
+      "schema_valid": true
+    },
+    "close_work_order": {
+      "risk_tier": "high",
+      "domain": "maintenance",
+      "action_type": "production_write",
+      "rollback_available": true,
+      "schema_valid": true
+    },
+    "purge_work_order_history": {
+      "risk_tier": "critical",
+      "domain": "maintenance",
+      "action_type": "destructive_write",
+      "rollback_available": false,
+      "schema_valid": true
+    }
+  }
+}

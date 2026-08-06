@@ -1,0 +1,249 @@
+# Assured Agent Execution — the whole product, locally, in production mode.
+#
+#   make up          verify the pin, build, migrate, start, wait healthy
+#   make scenarios   run the four decisions end to end
+#   make down        tear down, including volumes
+#
+# There is nothing to fill in first. `make up` generates .env with random
+# signing keys and database passwords on first run, so no two installations
+# share a credential — not even two developers on the same team. A compose
+# file with `change-me` keys committed in it trains people to leave them.
+#
+# Production mode is not decoration. REMORA_ENV=production makes the
+# fail-closed prerequisites binding for the surface this product serves:
+# durable execution state, a durable envelope store, and a token table with
+# real role separation. Remove any one and the control plane refuses to
+# start. That refusal is the property, so this file supplies all three
+# rather than weakening the check.
+#
+# REMORA_ENABLED_SURFACES=execution says this deployment serves the
+# policy-only execution surface and not the oracle-backed /v1/assess research
+# surface. Those routes are unmounted, so no oracle backend and no retrieval
+# evidence store are required — and none is configured. The product runs with
+# no network egress and no model API key at all.
+
+name: aae
+
+services:
+
+  # ── Control-plane state ─────────────────────────────────────────────────
+  # Tenant audit chain, review queue, one-time-grant ledger, execution
+  # outbox, DecisionEnvelope store. Core-owned tables, created by REMORA on
+  # first use. Not published to the host: only the control plane needs it.
+  control-plane-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: remora
+      POSTGRES_PASSWORD: ${CONTROL_PLANE_DB_PASSWORD:?run "make up" to generate .env}
+      POSTGRES_DB: remora
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U remora -d remora"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    expose: ["5432"]
+    volumes:
+      - control-plane-data:/var/lib/postgresql/data
+
+  # ── The system of record ────────────────────────────────────────────────
+  # A SEPARATE database, deliberately. The work orders a governed agent acts
+  # on are business data, not governance state, and the postcondition reader
+  # must be able to read them on a credential that cannot write. Putting both
+  # in one database would make that split a convention instead of a grant.
+  workorder-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wo_admin
+      POSTGRES_PASSWORD: ${WORKORDER_DB_PASSWORD:?run "make up" to generate .env}
+      POSTGRES_DB: workorders
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wo_admin -d workorders"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # Published, unlike the governance database, because the postcondition
+    # reader runs OUTSIDE the control plane — in the CLI, on the reader
+    # credential. That is the separation: the process that performs an action
+    # and the process that confirms it happened are not the same process, and
+    # do not hold the same grants. In a real deployment the reader runs
+    # wherever those credentials live; here it runs on your machine.
+    ports:
+      - "${AAE_WORKORDER_DB_PORT:-55432}:5432"
+    volumes:
+      - workorder-data:/var/lib/postgresql/data
+
+  # ── Migrations ──────────────────────────────────────────────────────────
+  # One-shot, under the admin role, BEFORE anything else connects. The worker
+  # and reader roles it creates hold no DDL rights, which is the point: a
+  # running product should not be able to change its own schema.
+  #
+  # The control plane waits on this completing successfully, so a failed
+  # migration means nothing starts — rather than a control plane running
+  # against a half-applied schema.
+  workorder-migrate:
+    image: postgres:16-alpine
+    depends_on:
+      workorder-db: {condition: service_healthy}
+    environment:
+      PGPASSWORD: ${WORKORDER_DB_PASSWORD}
+      # The two role passwords the grants file needs. Passed as psql variables
+      # rather than baked into the SQL, so nothing secret is ever committed.
+      AAE_WORKER_PASSWORD: ${AAE_WORKER_PASSWORD:?run "make up" to generate .env}
+      AAE_READER_PASSWORD: ${AAE_READER_PASSWORD:?run "make up" to generate .env}
+    volumes:
+      - ./db/workorders:/migrations:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        PSQL="psql -h workorder-db -U wo_admin -d workorders -v ON_ERROR_STOP=1"
+        echo "applying 001_initial.sql"
+        $$PSQL -q -f /migrations/001_initial.sql
+        echo "applying 002_roles.sql"
+        $$PSQL -q \
+          -v worker_password="$$AAE_WORKER_PASSWORD" \
+          -v reader_password="$$AAE_READER_PASSWORD" \
+          -f /migrations/002_roles.sql
+        $$PSQL -tAc \
+          "SELECT 'system of record at schema version ' || max(version) FROM schema_version"
+    restart: "no"
+
+  # ── The governed control plane ──────────────────────────────────────────
+  control-plane:
+    build:
+      context: .
+      dockerfile: docker/control-plane.Dockerfile
+    depends_on:
+      control-plane-db: {condition: service_healthy}
+      workorder-migrate: {condition: service_completed_successfully}
+    ports:
+      - "${AAE_API_PORT:-8088}:8000"
+    environment:
+      REMORA_ENV: production
+      REMORA_ENABLED_SURFACES: execution
+
+      # --- Fail-closed prerequisites -------------------------------------
+      # Durable execution state: tenant audit chain, review queue, and the
+      # one-time-grant ledger. Without it a consumed grant is replayable by
+      # another worker or after a restart.
+      REMORA_PG_DSN: postgresql://remora:${CONTROL_PLANE_DB_PASSWORD}@control-plane-db:5432/remora
+      REMORA_CONTROL_PLANE_DSN: postgresql://remora:${CONTROL_PLANE_DB_PASSWORD}@control-plane-db:5432/remora
+
+      # Token table — the only mode with real role separation.
+      #
+      #   operator         assess, execute, read     — proposes and acts
+      #   reviewer         review, follow_up, read   — approves routine holds
+      #   domain_expert    review, read              — approves production writes
+      #   senior_authority review, read              — approves escalations
+      #   viewer           read                      — neither
+      #
+      # None of the approver roles is `admin`. admin holds every capability
+      # including execute, so an admin approver can approve its own proposal
+      # and then execute it — exactly the separation this table exists to
+      # create. This file claimed "the approver token cannot execute" while
+      # configuring a role that could; tests/e2e caught it by trying, and
+      # that test is the reason the claim is now true.
+      #
+      # Three approver identities, not one, because REMORA's escalation
+      # contract decides which role a given decision needs — a priority
+      # change is not a production close is not a purge. The product reads
+      # `required_role` off the decision and presents the matching identity
+      # rather than holding one credential that can approve anything.
+      REMORA_API_TOKENS: >-
+        {"${AAE_TOKEN_AGENT}":{"tenant":"aae-work-orders","role":"operator"},
+         "${AAE_TOKEN_REVIEWER}":{"tenant":"aae-work-orders","role":"reviewer"},
+         "${AAE_TOKEN_EXPERT}":{"tenant":"aae-work-orders","role":"domain_expert"},
+         "${AAE_TOKEN_SENIOR}":{"tenant":"aae-work-orders","role":"senior_authority"},
+         "${AAE_TOKEN_VIEWER}":{"tenant":"aae-work-orders","role":"viewer"}}
+      REMORA_API_BEARER_TOKEN: ${AAE_TOKEN_AGENT}
+
+      # --- Signing -------------------------------------------------------
+      # Generated per installation into .env. In a real deployment these come
+      # from a secret manager; they are the difference between a
+      # tamper-evident chain and a decorative one.
+      REMORA_PDP_SIGNING_KEY: ${REMORA_PDP_SIGNING_KEY:?run "make up" to generate .env}
+      REMORA_LEASE_SIGNING_KEY: ${REMORA_LEASE_SIGNING_KEY}
+      REMORA_AUDIT_SIGNING_KEY: ${REMORA_AUDIT_SIGNING_KEY}
+      REMORA_ENVELOPE_SIGNING_KEY: ${REMORA_ENVELOPE_SIGNING_KEY}
+
+      # --- Deployment-owned semantics ------------------------------------
+      # The three things this product declares about itself: which callables
+      # exist, what they mean, and how risky they are.
+      REMORA_TOOL_REGISTRY_MODULE: toolpacks.work_order.registry
+      REMORA_SEMANTIC_BUNDLE_MODULE: toolpacks.work_order.bundle
+      REMORA_TOOL_METADATA_FILE: /app/toolpacks/work_order/tool_metadata.json
+      AAE_WORK_ORDER_AUTHORITY_FILE: /app/toolpacks/work_order/work_orders.json
+
+      # The deterministic ACCEPT. Opt-in in the core because it is meaningless
+      # without declared contracts, a state index and an intent source — this
+      # deployment has all three, which is what makes turning it on defensible
+      # here and not by default there.
+      REMORA_GROUNDED_READ_ACCEPT: "1"
+
+      # --- Signed ToolSpec bundle ----------------------------------------
+      # The authority to call each tool: argument schema, allowed targets,
+      # credential scope, whether the effect can be read back. Signed by the
+      # deployment (`make sign`), never by the agent.
+      #
+      # With a bundle configured, enforcement is STRICT — there is no
+      # trust-on-first-use and no legacy fallback. A fallback that ran the
+      # action anyway would turn every signature failure into a no-op, which
+      # is worse than having no signature at all because it reads as
+      # protection.
+      #
+      # The pinned digest is the part people skip. A signature proves the
+      # bundle is authentic; it says nothing about whether it is CURRENT. A
+      # correctly-signed older bundle — one where a tool was cheaper, or an
+      # allowed target wider — is the subtle attack, and pinning is what
+      # refuses it. `make sign` prints the digest to put here.
+      REMORA_TOOLSPEC_BUNDLE: /app/toolpacks/work_order/tool_specs.signed.json
+      REMORA_TOOLSPEC_SIGNING_KEY: ${REMORA_TOOLSPEC_SIGNING_KEY:?run "make up" then "make sign"}
+      REMORA_TOOLSPEC_TRUSTED_IDENTITIES: aae.work_order_signer/v1
+      REMORA_TOOLSPEC_PINNED_DIGEST: ${REMORA_TOOLSPEC_PINNED_DIGEST:-}
+
+      # --- The system of record ------------------------------------------
+      # The control plane's tool callables get the WRITER credential and
+      # nothing else. The reader DSN is deliberately absent from this
+      # container: the postcondition reader runs in the CLI, outside the
+      # process that performs the actions it verifies.
+      AAE_WORKORDER_DSN: postgresql://aae_worker:${AAE_WORKER_PASSWORD}@workorder-db:5432/workorders
+
+      REMORA_EXECUTION_ARTIFACT_DIR: /var/lib/aae/artifacts
+      REMORA_PROMETHEUS_PUBLIC: "1"
+    volumes:
+      - aae-artifacts:/var/lib/aae/artifacts
+
+  # ── Operator console ────────────────────────────────────────────────────
+  # A separate image that imports no REMORA module and holds no policy. It
+  # shells out to the product CLI for the scenarios rather than keeping its
+  # own copy — a console that could show green while the CLI showed red
+  # would leave nobody able to say which one described the product.
+  console:
+    build:
+      context: .
+      dockerfile: docker/console.Dockerfile
+    depends_on:
+      control-plane: {condition: service_healthy}
+    ports:
+      - "${AAE_CONSOLE_PORT:-8089}:8090"
+    environment:
+      AAE_API_URL: http://control-plane:8000
+      AAE_TOKEN_AGENT: ${AAE_TOKEN_AGENT}
+      AAE_TOKEN_REVIEWER: ${AAE_TOKEN_REVIEWER}
+      AAE_TOKEN_EXPERT: ${AAE_TOKEN_EXPERT}
+      AAE_TOKEN_SENIOR: ${AAE_TOKEN_SENIOR}
+      AAE_TOKEN_VIEWER: ${AAE_TOKEN_VIEWER}
+      # The console reads the system of record on the SAME read-only
+      # credential the postcondition reader holds. It reaches it over the
+      # compose network, not the published host port.
+      AAE_WORKORDER_READER_DSN: postgresql://aae_reader:${AAE_READER_PASSWORD}@workorder-db:5432/workorders
+      # Reported on the posture panel. Booleans, not the values: the console
+      # states whether enforcement is on and pinned, and never handles the
+      # signing key.
+      AAE_TOOLSPEC_CONFIGURED: "1"
+      AAE_TOOLSPEC_PINNED: ${REMORA_TOOLSPEC_PINNED_DIGEST:+1}
+
+volumes:
+  control-plane-data:
+  workorder-data:
+  aae-artifacts:
